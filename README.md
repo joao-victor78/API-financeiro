@@ -41,7 +41,7 @@ Sem banco instalado? `docker compose up -d mysql` ou `docker compose up -d postg
 
 | Comando | O que faz |
 |---|---|
-| `npm test` | 49 testes (19 unitários + 30 ponta a ponta) no banco do `.env`, com o sufixo `_test` no nome |
+| `npm test` | 50 testes (20 unitários + 30 ponta a ponta) no banco do `.env`, com o sufixo `_test` no nome |
 | `npm run test:cov` | Testes com relatório de cobertura |
 | `npm run demo` | Demonstração narrada do fluxo M2M completo (para apresentação) |
 | `npm run benchmark` | Mede recorrência, conciliação, webhook Pix e latência; grava `benchmark-resultados.json` |
@@ -52,6 +52,16 @@ Sem banco instalado? `docker compose up -d mysql` ou `docker compose up -d postg
 > (ex.: `financeiro` → `financeiro_test`) e **apagam e recriam** esse banco de testes; o banco de trabalho não é tocado.
 > Para usar outro banco nos testes, defina `TEST_DATABASE_URL`. Por segurança, no MySQL o script se recusa a apagar
 > um database cujo nome não termine em `_test`.
+
+## Frontend
+
+A interface do módulo fica em [`frontend/`](frontend/) (Next.js 15), pensada para ser incorporada ao sistema
+principal por iframe. Veja [frontend/README.md](frontend/README.md).
+
+```bash
+npm run dev                      # API em :3008 (nesta pasta)
+cd frontend && npm install && npm run dev   # interface em http://localhost:3000
+```
 
 ## Rotas
 
@@ -79,7 +89,7 @@ Todas sob `/api/financeiro`, resposta padrão `{ success, data, message, errors 
 | Sem FK/join entre schemas — só UUID | migration (FKs apenas internas ao schema `financeiro`) |
 | Tenant vem só do token | `src/common/auth/jwt.guard.ts` + `forbidNonWhitelisted` (enviar `tenant_id` → 422) |
 | Paginação máx. 100 | `src/common/dto/paginacao.dto.ts` |
-| JWT RS256, token fora do localStorage | `jwt.guard.ts` (Bearer ou cookie httpOnly `financeiro_token`) |
+| JWT RS256, token fora do localStorage | `jwt.guard.ts` (Bearer ou cookie httpOnly `financeiro_token`, lido direto do cabeçalho `Cookie`) |
 | Códigos 200/201/204/400/401/403/404/409/422 | filtro global `excecao.filter.ts` + pipe `validacao.pipe.ts` |
 
 ## Automações
@@ -105,6 +115,7 @@ src/
     automacao/       (agendador)
     health/
 test/                unit.spec.ts, financeiro.e2e-spec.ts
+frontend/            interface Next.js (iframe, sessão em cookie httpOnly)
 scripts/             gerar-chaves, emitir-token, demo, benchmark
 ```
 

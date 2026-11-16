@@ -1,3 +1,4 @@
+import './env';
 import { addDias, addMeses, comDia, diffDias } from '../src/common/datas';
 import { cicloDe, proximaCompetencia } from '../src/modules/recorrencias/recorrencias.service';
 import { calcularEncargos, faixaDe } from '../src/modules/inadimplencia/encargos';
@@ -6,6 +7,8 @@ import { decodificarOfx, OfxInvalidoError, parseOfx } from '../src/modules/conci
 import { crc16, gerarBrCode } from '../src/modules/pix/brcode';
 import { totalItens } from '../src/modules/cobrancas/cobrancas.service';
 import { Periodicidade } from '../src/common/enums';
+import { JwtGuard, lerCookie } from '../src/common/auth/jwt.guard';
+import { token } from './helpers';
 
 describe('datas', () => {
   it('soma meses respeitando fim de mês', () => {
@@ -134,5 +137,23 @@ describe('motor de conciliação', () => {
   });
   it('valor diferente é descartado', () => {
     expect(pontuar(base, [{ id: 'a', saldo_cent: 19991, data_vencimento: '2026-10-10' }])).toEqual([]);
+  });
+});
+
+describe('autenticação por cookie httpOnly (frontend em iframe)', () => {
+  const contexto = (headers: Record<string, string>) => {
+    const req: any = { headers };
+    return { req, ctx: { getHandler: () => null, getClass: () => null, switchToHttp: () => ({ getRequest: () => req }) } as any };
+  };
+  const guard = new JwtGuard({ getAllAndOverride: () => undefined } as any);
+
+  it('aceita o token no cookie financeiro_token e rejeita cookie inválido', () => {
+    const tenant = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+    expect(lerCookie(`tema=escuro; financeiro_token=${'abc'}; x=1`, 'financeiro_token')).toBe('abc');
+    const ok = contexto({ cookie: `tema=escuro; financeiro_token=${token(tenant)}` });
+    expect(guard.canActivate(ok.ctx)).toBe(true);
+    expect(ok.req.user.tenant_id).toBe(tenant);
+    expect(() => guard.canActivate(contexto({ cookie: 'financeiro_token=lixo' }).ctx)).toThrow('Token inválido');
+    expect(() => guard.canActivate(contexto({}).ctx)).toThrow('Token de acesso ausente');
   });
 });

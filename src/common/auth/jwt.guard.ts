@@ -7,6 +7,25 @@ import { PERMISSOES, PUBLICO } from './decorators';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+export const COOKIE_TOKEN = 'financeiro_token';
+
+/** Lê um cookie do cabeçalho Cookie sem depender de middleware (cookie-parser). */
+export function lerCookie(cabecalho: string | undefined, nome: string): string | undefined {
+  if (!cabecalho) return undefined;
+  for (const parte of cabecalho.split(';')) {
+    const i = parte.indexOf('=');
+    if (i > 0 && parte.slice(0, i).trim() === nome) {
+      const valor = parte.slice(i + 1).trim();
+      try {
+        return decodeURIComponent(valor) || undefined;
+      } catch {
+        return valor || undefined;
+      }
+    }
+  }
+  return undefined;
+}
+
 /**
  * Valida o JWT RS256 emitido pelo módulo de Autenticação usando apenas a chave pública.
  * Nenhuma consulta a banco central é feita: cada serviço valida a identidade de forma
@@ -22,8 +41,8 @@ export class JwtGuard implements CanActivate {
 
     const req = ctx.switchToHttp().getRequest();
     const header: string | undefined = req.headers['authorization'];
-    // Também aceita cookie httpOnly, pois o frontend roda em iframe e NÃO guarda token em localStorage.
-    const token = header?.startsWith('Bearer ') ? header.slice(7) : req.cookies?.['financeiro_token'];
+    // Também aceita cookie httpOnly (SameSite=Strict), pois o frontend roda em iframe e NÃO guarda token em localStorage.
+    const token = header?.startsWith('Bearer ') ? header.slice(7) : lerCookie(req.headers['cookie'], COOKIE_TOKEN);
     if (!token) throw new UnauthorizedException('Token de acesso ausente');
 
     let payload: any;
