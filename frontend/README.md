@@ -7,7 +7,7 @@ incorporada ao sistema principal por **iframe**.
 
 ```bash
 # 1. API (na pasta raiz do projeto)
-npm run keys && npm run dev          # http://localhost:3008/api/financeiro
+mvn -q compile exec:java@chaves && mvn spring-boot:run   # http://localhost:3008/api/financeiro
 
 # 2. Frontend (nesta pasta)
 cp .env.example .env
@@ -16,7 +16,7 @@ npm run dev                          # http://localhost:3000
 ```
 
 Em `npm run dev`, a tela **Entrar** oferece o login de desenvolvimento. Ele faz o papel do módulo de
-Autenticação e emite um JWT RS256 com a chave criada por `npm run keys`. Use sempre o mesmo tenant
+Autenticação e emite um JWT RS256 com a chave criada por `mvn -q compile exec:java@chaves`. Use sempre o mesmo tenant
 para reencontrar os dados. Em produção (`npm run build && npm start`) esse login e a simulação de Pix
 ficam desativados.
 

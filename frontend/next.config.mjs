@@ -1,6 +1,6 @@
 /**
  * O navegador fala só com este servidor (mesma origem). As chamadas a /api/financeiro/* são
- * repassadas à API NestJS, levando junto o cookie httpOnly com o JWT — o token nunca fica
+ * repassadas à API Java (Spring Boot), levando junto o cookie httpOnly com o JWT — o token nunca fica
  * acessível ao JavaScript da página (nem em localStorage), reduzindo a exposição a XSS.
  */
 const API = process.env.FINANCEIRO_API_URL ?? 'http://localhost:3008';

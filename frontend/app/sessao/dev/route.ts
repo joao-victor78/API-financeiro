@@ -18,7 +18,7 @@ export async function GET() {
 
 /**
  * DESENVOLVIMENTO: faz o papel do módulo de Autenticação, emitindo um JWT RS256 com a chave
- * gerada por "npm run keys" na API — o mesmo que scripts/emitir-token.ts faz no terminal.
+ * gerada por "mvn -q compile exec:java@chaves" na API — o mesmo que a ferramenta EmitirToken faz no terminal.
  */
 export async function POST(req: Request) {
   if (!devDisponivel()) return NextResponse.json({ success: false, data: null, message: 'Login de desenvolvimento desativado' }, { status: 404 });

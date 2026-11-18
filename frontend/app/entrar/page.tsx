@@ -89,7 +89,7 @@ export default function Entrar() {
         {dev && (
           <form className="form" onSubmit={loginDev} style={{ gridTemplateColumns: '1fr' }}>
             <p className="sutil" style={{ margin: 0 }}>
-              <strong>Modo desenvolvimento:</strong> simula o módulo de Autenticação emitindo um JWT RS256 com a chave de <code>npm run keys</code>.
+              <strong>Modo desenvolvimento:</strong> simula o módulo de Autenticação emitindo um JWT RS256 com a chave gerada pela API (<code>exec:java@chaves</code>).
             </p>
             <Campo rotulo="Nome">
               <input value={nome} onChange={(e) => setNome(e.target.value)} maxLength={60} />
@@ -120,7 +120,7 @@ export default function Entrar() {
             Entrar com um token JWT
           </summary>
           <form className="form" onSubmit={loginToken} style={{ gridTemplateColumns: '1fr', marginTop: 10 }}>
-            <Campo rotulo="Token" dica='Gerado pelo módulo de Autenticação (ou "npm run token" na API).'>
+            <Campo rotulo="Token" dica='Gerado pelo módulo de Autenticação (ou "mvn -q compile exec:java@token" na API).'>
               <textarea rows={4} value={token} onChange={(e) => setToken(e.target.value)} required className="mono" />
             </Campo>
             <button className="btn btn-sec" disabled={aguardando}>

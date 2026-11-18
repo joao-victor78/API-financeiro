@@ -1,8 +1,10 @@
+target/
 node_modules/
-dist/
-coverage/
 .env
 keys/
 benchmark-resultados.json
 *.png
 !docs/*.png
+.idea/
+.vscode/
+*.iml
