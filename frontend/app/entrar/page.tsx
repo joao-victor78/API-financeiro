@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { Campo } from '@/components/ui';
 
 const ORIGEM_SISTEMA = process.env.NEXT_PUBLIC_ORIGEM_SISTEMA || '';
-const TENANT_DEMO = '6f1c2a8e-3b7d-4c55-9a10-2e4f8b7d9c01';
+const TENANT_DEMO = '17869f5d-a221-42c8-95f9-2dd6d4659d4b';
 
 async function abrir(caminho: string, corpo: unknown) {
   const r = await fetch(caminho, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(corpo) });

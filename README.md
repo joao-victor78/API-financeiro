@@ -44,6 +44,7 @@ Sem banco instalado? `docker compose up -d mysql` ou `docker compose up -d postg
 | `npm test` | 50 testes (20 unitários + 30 ponta a ponta) no banco do `.env`, com o sufixo `_test` no nome |
 | `npm run test:cov` | Testes com relatório de cobertura |
 | `npm run demo` | Demonstração narrada do fluxo M2M completo (para apresentação) |
+| `npm run popular` | Preenche a API em execução com dados fictícios (5 clientes, 4 meses de histórico, contas a pagar, OFX, inadimplência) no tenant padrão do login do frontend |
 | `npm run benchmark` | Mede recorrência, conciliação, webhook Pix e latência; grava `benchmark-resultados.json` |
 | `npm run pix -- <chave> <valor> [nome] [cidade]` | Gera um QR Code Pix avulso (terminal + PNG) para testar com uma chave real, sem banco nem servidor |
 | `npm run build` / `npm start` | Build de produção |

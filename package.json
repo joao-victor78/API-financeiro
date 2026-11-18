@@ -14,7 +14,8 @@
     "test": "jest --runInBand",
     "test:cov": "jest --runInBand --coverage",
     "benchmark": "ts-node scripts/benchmark.ts",
-    "pix": "ts-node scripts/gerar-pix.ts"
+    "pix": "ts-node scripts/gerar-pix.ts",
+    "popular": "ts-node scripts/popular-demo.ts"
   },
   "keywords": [],
   "author": "",
