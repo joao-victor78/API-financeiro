@@ -3,13 +3,15 @@ package br.com.erp.financeiro.comum;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import org.springframework.stereotype.Component;
 
 /**
- * Fonte única de "agora" do módulo. Os jobs automáticos dependem de data; centralizar aqui permite
- * simular a passagem do tempo nos testes e na demonstração.
+ * Fonte única de "agora" do módulo. Os jobs (atraso, régua, recorrência) dependem da data; centralizar
+ * aqui permite simular a passagem do tempo nos testes.
  */
 @Component
 public class Relogio {
@@ -22,17 +24,21 @@ public class Relogio {
     return fixo != null ? fixo : Instant.now();
   }
 
+  public OffsetDateTime agoraUtc() {
+    return OffsetDateTime.ofInstant(agora(), ZoneOffset.UTC);
+  }
+
   /** Data de hoje no fuso de Brasília. */
   public LocalDate hoje() {
     return LocalDate.ofInstant(agora(), BRASILIA);
   }
 
-  /** Fixa o relógio ao meio-dia (horário de Brasília) da data informada; null volta ao relógio real. */
-  public void fixar(LocalDate data) {
-    fixo = data == null ? null : data.atTime(LocalTime.NOON).toInstant(ZoneOffset.ofHours(-3));
+  public YearMonth mesAtual() {
+    return YearMonth.from(hoje());
   }
 
-  public void fixar(String dataIso) {
-    fixar(dataIso == null ? null : LocalDate.parse(dataIso));
+  /** Fixa o relógio ao meio-dia (Brasília) da data; null volta ao relógio real. Uso em testes. */
+  public void fixar(LocalDate data) {
+    fixo = data == null ? null : data.atTime(LocalTime.NOON).atZone(BRASILIA).toInstant();
   }
 }

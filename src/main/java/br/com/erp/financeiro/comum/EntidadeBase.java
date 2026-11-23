@@ -1,56 +1,110 @@
 package br.com.erp.financeiro.comum;
 
+import br.com.erp.financeiro.seguranca.Usuarios;
 import jakarta.persistence.Column;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.MappedSuperclass;
-import java.time.Instant;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Transient;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.UUID;
-import lombok.Getter;
-import lombok.Setter;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.annotations.TenantId;
+import org.springframework.data.domain.Persistable;
 
 /**
- * Regra técnica (i) do projeto: toda tabela de negócio possui id único, tenant e campos de auditoria,
- * com exclusão lógica (soft delete). As entidades filhas usam @SQLRestriction("deleted_at IS NULL").
+ * As sete colunas obrigatórias de toda tabela de negócio (Contrato §7.2, EOR §2.3).
+ * {@code @TenantId}: o Hibernate grava o tenant do contexto e filtra as consultas por ele.
+ * Id gerado pela aplicação; {@link Persistable} evita o SELECT antes de cada INSERT.
  */
-@Getter
-@Setter
 @MappedSuperclass
-public abstract class EntidadeBase {
+public abstract class EntidadeBase implements Persistable<UUID> {
 
   @Id
-  @GeneratedValue(strategy = GenerationType.UUID)
-  private UUID id;
+  private UUID id = UUID.randomUUID();
 
-  @Column(nullable = false, updatable = false)
+  @TenantId
+  @Column(name = "tenant_id", nullable = false, updatable = false)
   private UUID tenantId;
 
-  @CreationTimestamp
-  @Column(updatable = false)
-  private Instant createdAt;
+  @Column(name = "created_at", nullable = false, updatable = false)
+  private OffsetDateTime createdAt;
 
-  @UpdateTimestamp
-  private Instant updatedAt;
+  @Column(name = "updated_at", nullable = false)
+  private OffsetDateTime updatedAt;
 
-  private Instant deletedAt;
+  @Column(name = "deleted_at")
+  private OffsetDateTime deletedAt;
+
+  @Column(name = "created_by", updatable = false)
   private UUID createdBy;
-  private UUID updatedBy;
-  private UUID deletedBy;
 
-  /** Exclusão lógica com registro de quem excluiu. */
-  public void excluir(UUID autor, Instant quando) {
-    this.deletedAt = quando;
-    this.deletedBy = autor;
-    this.updatedBy = autor;
+  @Column(name = "updated_by")
+  private UUID updatedBy;
+
+  @Transient
+  private boolean novo = true;
+
+  @PrePersist
+  void aoCriar() {
+    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+    createdAt = agora;
+    updatedAt = agora;
+    createdBy = Usuarios.atual();
+    updatedBy = createdBy;
   }
 
-  /** Preenche tenant e autoria de um registro novo. */
-  public void auditarCriacao(UUID tenant, UUID autor) {
-    this.tenantId = tenant;
-    this.createdBy = autor;
-    this.updatedBy = autor;
+  @PreUpdate
+  void aoAlterar() {
+    updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
+    updatedBy = Usuarios.atual();
+  }
+
+  @PostLoad
+  @PostPersist
+  void marcarPersistido() {
+    novo = false;
+  }
+
+  /** Exclusão lógica (EOR §2.3): o registro sai das consultas e o histórico permanece. */
+  public void excluir() {
+    deletedAt = OffsetDateTime.now(ZoneOffset.UTC);
+  }
+
+  @Override
+  public UUID getId() {
+    return id;
+  }
+
+  @Override
+  public boolean isNew() {
+    return novo;
+  }
+
+  public UUID getTenantId() {
+    return tenantId;
+  }
+
+  public OffsetDateTime getCreatedAt() {
+    return createdAt;
+  }
+
+  public OffsetDateTime getUpdatedAt() {
+    return updatedAt;
+  }
+
+  public OffsetDateTime getDeletedAt() {
+    return deletedAt;
+  }
+
+  public UUID getCreatedBy() {
+    return createdBy;
+  }
+
+  public UUID getUpdatedBy() {
+    return updatedBy;
   }
 }

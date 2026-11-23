@@ -4,7 +4,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-/** Ponto de entrada do Módulo Financeiro (API REST em http://localhost:3008/api/financeiro). */
+/** Módulo Financeiro (Grupo 8): API em :8085, rotas sob /api/financeiro e /public/financeiro. */
 @SpringBootApplication
 @EnableScheduling
 public class FinanceiroApplication {

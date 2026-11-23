@@ -11,21 +11,21 @@
   </parent>
 
   <groupId>br.com.erp</groupId>
-  <artifactId>financeiro-api</artifactId>
-  <version>0.1.0</version>
-  <name>financeiro-api</name>
-  <description>API do módulo Financeiro — Projeto Integrador ADS PUC Goiás / Internet das Coisas</description>
+  <artifactId>financeiro</artifactId>
+  <version>1.0.0</version>
+  <name>financeiro</name>
+  <description>Módulo Financeiro (Grupo 8) — Projeto Integrador 2026. Segue a EOR v1.0 e o Contrato de Integração.</description>
 
   <properties>
-    <java.version>17</java.version>
+    <!-- Contrato §13.1: Java 21 (local, CI e imagem Docker). -->
+    <java.version>21</java.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <jjwt.version>0.12.6</jjwt.version>
     <zxing.version>3.5.3</zxing.version>
     <springdoc.version>2.8.17</springdoc.version>
+    <jjwt.version>0.12.6</jjwt.version>
   </properties>
 
   <dependencies>
-    <!-- API REST, validação e agendamento -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-web</artifactId>
@@ -34,16 +34,23 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-validation</artifactId>
     </dependency>
-
-    <!-- Persistência: JPA/Hibernate + PostgreSQL + migrations Flyway -->
+    <!-- Resource server JWT: valida o token do identity pelo JWKS (Contrato §4.2) -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-security</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-jpa</artifactId>
     </dependency>
+    <!-- Eventos entre módulos (Contrato §9.7) -->
     <dependency>
-      <groupId>org.postgresql</groupId>
-      <artifactId>postgresql</artifactId>
-      <scope>runtime</scope>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-amqp</artifactId>
     </dependency>
     <dependency>
       <groupId>org.flywaydb</groupId>
@@ -53,8 +60,32 @@
       <groupId>org.flywaydb</groupId>
       <artifactId>flyway-database-postgresql</artifactId>
     </dependency>
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>runtime</scope>
+    </dependency>
 
-    <!-- JWT RS256 (validação com a chave pública do módulo de Autenticação) -->
+    <!-- QR Code do PIX (adaptador simulado) -->
+    <dependency>
+      <groupId>com.google.zxing</groupId>
+      <artifactId>core</artifactId>
+      <version>${zxing.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.google.zxing</groupId>
+      <artifactId>javase</artifactId>
+      <version>${zxing.version}</version>
+    </dependency>
+
+    <!-- Swagger UI em /api/financeiro/docs (o contrato oficial fica no infra-integrador-2026) -->
+    <dependency>
+      <groupId>org.springdoc</groupId>
+      <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+      <version>${springdoc.version}</version>
+    </dependency>
+
+    <!-- Só para as ferramentas de desenvolvimento (emitir token local) -->
     <dependency>
       <groupId>io.jsonwebtoken</groupId>
       <artifactId>jjwt-api</artifactId>
@@ -73,82 +104,32 @@
       <scope>runtime</scope>
     </dependency>
 
-    <!-- QR Code do Pix -->
-    <dependency>
-      <groupId>com.google.zxing</groupId>
-      <artifactId>core</artifactId>
-      <version>${zxing.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>com.google.zxing</groupId>
-      <artifactId>javase</artifactId>
-      <version>${zxing.version}</version>
-    </dependency>
-
-    <!-- Documentação OpenAPI / Swagger UI -->
-    <dependency>
-      <groupId>org.springdoc</groupId>
-      <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-      <version>${springdoc.version}</version>
-    </dependency>
-
-    <dependency>
-      <groupId>org.projectlombok</groupId>
-      <artifactId>lombok</artifactId>
-      <optional>true</optional>
-    </dependency>
-
-    <!-- Testes: JUnit 5 + MockMvc -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-test</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
+    <finalName>financeiro</finalName>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
         <configuration>
           <parameters>true</parameters>
-          <annotationProcessorPaths>
-            <path>
-              <groupId>org.projectlombok</groupId>
-              <artifactId>lombok</artifactId>
-              <version>${lombok.version}</version>
-            </path>
-          </annotationProcessorPaths>
         </configuration>
       </plugin>
-
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
-        <configuration>
-          <excludes>
-            <exclude>
-              <groupId>org.projectlombok</groupId>
-              <artifactId>lombok</artifactId>
-            </exclude>
-          </excludes>
-        </configuration>
       </plugin>
-
-      <!-- Demonstração e benchmark ficam fora do "mvn test"; rode com -Dtest=Demonstracao ou -Dtest=Benchmark -->
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-surefire-plugin</artifactId>
-        <configuration>
-          <excludes>
-            <exclude>**/ferramentas/**</exclude>
-          </excludes>
-          <failIfNoSpecifiedTests>false</failIfNoSpecifiedTests>
-        </configuration>
-      </plugin>
-
-      <!-- Relatório de cobertura: mvn verify → target/site/jacoco/index.html -->
       <plugin>
         <groupId>org.jacoco</groupId>
         <artifactId>jacoco-maven-plugin</artifactId>
@@ -164,8 +145,7 @@
           </execution>
         </executions>
       </plugin>
-
-      <!-- Utilitários de linha de comando: mvn -q compile exec:java@<nome> -Dexec.args="..." -->
+      <!-- Ferramentas de desenvolvimento: mvn -q compile exec:java@<nome> -Dexec.args="..." -->
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>
@@ -178,14 +158,6 @@
           <execution>
             <id>token</id>
             <configuration><mainClass>br.com.erp.financeiro.ferramentas.EmitirToken</mainClass></configuration>
-          </execution>
-          <execution>
-            <id>pix</id>
-            <configuration><mainClass>br.com.erp.financeiro.ferramentas.GerarPix</mainClass></configuration>
-          </execution>
-          <execution>
-            <id>popular</id>
-            <configuration><mainClass>br.com.erp.financeiro.ferramentas.PopularDemo</mainClass></configuration>
           </execution>
         </executions>
       </plugin>

@@ -1,46 +1,25 @@
 package br.com.erp.financeiro.eventos;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.UUID;
-import lombok.Getter;
-import lombok.Setter;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
-/** Outbox transacional: o evento é gravado na MESMA transação da mudança de estado. */
-@Getter
-@Setter
-@Entity
-@Table(name = "eventos")
-public class Evento {
-
-  @Id
-  @GeneratedValue(strategy = GenerationType.UUID)
-  private UUID id;
-
-  private UUID tenantId;
-  private String tipo;
-  private UUID agregadoId;
-
-  @JdbcTypeCode(SqlTypes.JSON)
-  private Map<String, Object> payload;
-
-  /** pendente | entregue | sem_assinantes | falha */
-  private String status = "pendente";
-  private int tentativas;
-  private Instant proximaTentativa;
-  private String ultimoErro;
-  private Instant entregueEm;
-
-  @CreationTimestamp
-  @Column(updatable = false)
-  private Instant createdAt;
-}
+/**
+ * Envelope de toda mensagem do RabbitMQ, igual em todos os módulos (Contrato §9.7).
+ *
+ * @param id           chave de idempotência: quem consome ignora um id já processado
+ * @param tipo         modulo.entidade.acao, com o verbo no particípio (pedidos à plataforma são a exceção)
+ * @param tenantId     a única fonte de tenant numa mensagem, que não carrega token
+ * @param usuarioId    quem provocou o fato; nulo em rotina automática
+ * @param correlacaoId X-Request-Id da requisição de origem
+ */
+public record Evento(
+    UUID id,
+    String tipo,
+    int versao,
+    UUID tenantId,
+    String moduloOrigem,
+    OffsetDateTime ocorridoEm,
+    UUID usuarioId,
+    String correlacaoId,
+    Map<String, Object> dados) {}

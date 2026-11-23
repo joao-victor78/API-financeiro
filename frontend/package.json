@@ -1,25 +1,28 @@
 {
-  "name": "financeiro-frontend",
-  "version": "0.1.0",
+  "name": "financeiro-front",
   "private": true,
-  "description": "Frontend do módulo Financeiro (Next.js) — incorporado ao sistema principal por iframe",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Front do módulo Financeiro (Grupo 8), servido em /modulos/financeiro/ e embutido na casca por iframe",
   "scripts": {
-    "dev": "next dev -p 3000",
-    "build": "next build",
-    "start": "next start -p 3000",
-    "typecheck": "tsc --noEmit"
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview"
   },
   "dependencies": {
-    "jsonwebtoken": "9.0.3",
-    "next": "15.5.29",
-    "react": "19.1.10",
-    "react-dom": "19.1.10"
+    "lucide-react": "^0.544.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
-    "@types/jsonwebtoken": "^9.0.10",
+    "@tailwindcss/vite": "^4.1.0",
     "@types/node": "^22.20.5",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
-    "typescript": "^5.9.3"
+    "@vitejs/plugin-react": "^5.0.0",
+    "tailwindcss": "^4.1.0",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.0"
   }
 }

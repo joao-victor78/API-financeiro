@@ -2,27 +2,33 @@ package br.com.erp.financeiro.comum;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.text.NumberFormat;
+import java.util.Locale;
 
-/** Toda aritmética monetária é feita em centavos inteiros (long) para evitar erro de arredondamento. */
+/**
+ * Dinheiro é sempre BigDecimal com 2 casas (RNF-02): nunca float/double. Entrada com mais de 2 casas
+ * é rejeitada (@Digits nos DTOs → PRECISAO_EXCEDIDA); arredondamento só em cálculo interno
+ * (quantidade × valor unitário, rateio do MRR).
+ */
 public final class Dinheiro {
+
+  public static final BigDecimal ZERO = new BigDecimal("0.00");
 
   private Dinheiro() {}
 
-  public static long centavos(BigDecimal valor) {
-    return valor == null ? 0 : valor.movePointRight(2).setScale(0, RoundingMode.HALF_UP).longValueExact();
+  public static BigDecimal de(BigDecimal v) {
+    return v == null ? ZERO : v.setScale(2, RoundingMode.HALF_EVEN);
   }
 
-  public static BigDecimal reais(long centavos) {
-    return BigDecimal.valueOf(centavos, 2);
+  public static BigDecimal ouZero(BigDecimal v) {
+    return v == null ? ZERO : v;
   }
 
-  /** Arredondamento "meio para cima", igual ao Math.round do cálculo original. */
-  public static long arredondar(BigDecimal valor) {
-    return valor.setScale(0, RoundingMode.HALF_UP).longValueExact();
+  public static boolean positivo(BigDecimal v) {
+    return v != null && v.signum() > 0;
   }
 
-  /** Percentual com duas casas: parte / todo × 100. */
-  public static double percentual(long parte, long todo) {
-    return todo == 0 ? 0 : Math.round((double) parte / todo * 10000) / 100.0;
+  public static String brl(BigDecimal v) {
+    return NumberFormat.getCurrencyInstance(Locale.forLanguageTag("pt-BR")).format(de(v)).replace(' ', ' ');
   }
 }
