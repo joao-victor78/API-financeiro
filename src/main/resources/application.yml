@@ -8,11 +8,14 @@ spring:
     name: financeiro
 
   datasource:
+    # Nome do pool Hikari. NÃO usar hikari.pool-name: o infra passa SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT,
+    # e o binder lê essa variável também como "connection.timeout", chama getConnection() e abre o pool no
+    # meio do bind; o pool-name seguinte é recusado ("pool is sealed"). O Boot aplica datasource.name antes.
+    name: financeiro
     url: ${DB_URL:jdbc:postgresql://localhost:5432/plataforma}
     username: ${DB_APP_USER:usr_financeiro}        # aplicação: só dados (Contrato §7.1)
     password: ${DB_APP_PASSWORD:troque}
     hikari:
-      pool-name: financeiro
       maximum-pool-size: 10
 
   flyway:
