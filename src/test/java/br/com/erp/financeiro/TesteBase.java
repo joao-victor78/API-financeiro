@@ -70,6 +70,7 @@ public abstract class TesteBase {
     r.add("spring.datasource.url", () -> URL);
     r.add("spring.datasource.username", () -> USUARIO);
     r.add("spring.datasource.password", () -> SENHA);
+    r.add("spring.flyway.url", () -> URL);
     r.add("spring.flyway.user", () -> USUARIO);
     r.add("spring.flyway.password", () -> SENHA);
     r.add("spring.flyway.create-schemas", () -> "true");

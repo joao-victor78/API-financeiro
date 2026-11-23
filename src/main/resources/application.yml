@@ -16,6 +16,8 @@ spring:
       maximum-pool-size: 10
 
   flyway:
+    # URL própria: o Flyway abre a conexão do owner sozinho, sem tocar no pool Hikari da aplicação.
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/plataforma}
     user: ${DB_OWNER_USER:own_financeiro}          # migrations: dono do schema
     password: ${DB_OWNER_PASSWORD:troque}
     schemas: financeiro
