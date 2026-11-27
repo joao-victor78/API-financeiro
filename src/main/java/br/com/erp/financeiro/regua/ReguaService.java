@@ -145,7 +145,9 @@ public class ReguaService {
     int marcadas = 0;
     int eventos = 0;
     for (Cobranca c : cobrancas.vencidasEm(
-        List.of(StatusCobranca.ABERTO, StatusCobranca.PARCIAL, StatusCobranca.ATRASADO), hoje)) {
+        List.of(StatusCobranca.ABERTO, StatusCobranca.PARCIAL, StatusCobranca.ATRASADO, StatusCobranca.AGENDADO), hoje)) {
+      // Agendada para hoje ou depois: o atraso só conta quando a data marcada passar (§24).
+      if (c.getStatus() == StatusCobranca.AGENDADO && c.getAgendadaPara() != null && !c.getAgendadaPara().isBefore(hoje)) continue;
       if (c.getStatus() != StatusCobranca.ATRASADO) {
         Map<String, Object> antes = c.instantaneo();
         c.marcarAtrasada();

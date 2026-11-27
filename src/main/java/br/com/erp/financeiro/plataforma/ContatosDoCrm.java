@@ -77,6 +77,40 @@ public class ContatosDoCrm implements ContatosDaEmpresa {
     return Optional.empty();
   }
 
+  /** GET /api/crm/empresas/{id}: razão social, CNPJ (ou CPF) e e-mail. Lê os nomes de campo mais comuns. */
+  @Override
+  public Optional<DadosEmpresa> dados(UUID tenant, UUID empresaId) {
+    if (clientSecret == null || clientSecret.isBlank()) return Optional.empty();
+    try {
+      HttpRequest req = HttpRequest.newBuilder(URI.create(crmUrl + "/api/crm/empresas/" + empresaId))
+          .timeout(timeout)
+          .header("Authorization", "Bearer " + tokenDeServico())
+          .header("X-Tenant-Id", tenant.toString())
+          .header(CorrelacaoFiltro.CABECALHO, Optional.ofNullable(MDC.get(CorrelacaoFiltro.CHAVE_MDC))
+              .orElseGet(() -> UUID.randomUUID().toString()))
+          .GET().build();
+      HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+      if (res.statusCode() != 200) return Optional.empty();
+      JsonNode raiz = mapper.readTree(res.body());
+      JsonNode d = raiz.has("data") ? raiz.path("data") : raiz;
+      String nome = primeiro(d, "razaoSocial", "nomeFantasia", "nome");
+      String documento = primeiro(d, "cnpj", "cpf", "documento", "cpfCnpj");
+      if (nome == null) return Optional.empty();
+      return Optional.of(new DadosEmpresa(nome, documento == null ? null : documento.replaceAll("\\D", ""), primeiro(d, "email")));
+    } catch (Exception e) {
+      log.warn("Empresa {} indisponível no CRM: {}", empresaId, e.getMessage());
+      return Optional.empty();
+    }
+  }
+
+  private static String primeiro(JsonNode n, String... campos) {
+    for (String c : campos) {
+      String v = n.path(c).asText("");
+      if (!v.isBlank()) return v;
+    }
+    return null;
+  }
+
   private String tokenDeServico() throws Exception {
     if (token != null && Instant.now().isBefore(tokenExpiraEm)) return token;
     String corpo = mapper.writeValueAsString(Map.of("clientId", clientId, "clientSecret", clientSecret));

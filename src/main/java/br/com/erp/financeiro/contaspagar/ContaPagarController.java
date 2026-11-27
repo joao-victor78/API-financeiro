@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -46,10 +47,21 @@ public class ContaPagarController {
       @RequestParam(required = false) Integer tamanho,
       @RequestParam(required = false) Boolean aprovado,
       @RequestParam(required = false) ContaPagar.Status status,
-      @RequestParam(required = false) String ordenar) {
+      @RequestParam(required = false) String ordenar,
+      @RequestParam(required = false) UUID categoriaId,
+      @RequestParam(required = false) UUID centroCustoId,
+      @RequestParam(required = false) java.time.LocalDate competencia) {
     Sort ordem = ordenar == null || ordenar.isBlank() ? ORDENS.get("vencimento,asc") : ORDENS.get(ordenar);
     if (ordem == null) throw ApiException.campo("ordenar", "ORDENACAO_INVALIDA", "Use vencimento,asc, vencimento,desc ou criadoEm,desc.");
-    return Resposta.ok(contas.listar(aprovado, status, Pagina.pedido(pagina, tamanho, ordem)));
+    return Resposta.ok(contas.listar(new ContaPagarService.Filtro(aprovado, status, categoriaId, centroCustoId, competencia),
+        Pagina.pedido(pagina, tamanho, ordem)));
+  }
+
+  /** §25 "documento": anexa o arquivo (enviado antes em /documentos) à conta. */
+  @PutMapping("/{id}/documento")
+  @PreAuthorize("hasAuthority('financeiro.contapagar.criar')")
+  public Resposta<ContaPagarSaida> anexar(@PathVariable UUID id, @Valid @RequestBody ContaPagarDtos.AnexoEntrada e) {
+    return Resposta.ok(ContaPagarSaida.de(contas.anexar(id, e.documentoId())), "Documento anexado.");
   }
 
   @PostMapping

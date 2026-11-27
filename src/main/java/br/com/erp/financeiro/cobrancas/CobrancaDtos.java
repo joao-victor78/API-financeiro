@@ -31,7 +31,13 @@ public final class CobrancaDtos {
       @PositiveOrZero(message = "não pode ser negativo") @Digits(integer = 13, fraction = 2, message = MSG_CASAS) BigDecimal juros,
       @PositiveOrZero(message = "não pode ser negativo") @Digits(integer = 13, fraction = 2, message = MSG_CASAS) BigDecimal multa,
       @Size(max = 200, message = "até 200 caracteres") String descricao,
-      MeioPagamento formaPagamento) {}
+      MeioPagamento formaPagamento,
+      // V2, todos opcionais: classificação (§25) e quem vendeu (§71)
+      UUID categoriaId,
+      UUID centroCustoId,
+      UUID vendedorId,
+      UUID sdrId,
+      UUID parceiroId) {}
 
   public record CobrancaSaida(
       UUID id,
@@ -53,15 +59,33 @@ public final class CobrancaDtos {
       long diasAtraso,
       OffsetDateTime createdAt,
       OffsetDateTime updatedAt,
-      OffsetDateTime deletedAt) {
+      OffsetDateTime deletedAt,
+      UUID categoriaId,
+      UUID centroCustoId,
+      UUID vendedorId,
+      UUID sdrId,
+      UUID parceiroId,
+      BigDecimal valorVariavel,
+      boolean encargosManuais,
+      LocalDate encargosCalculadosEm,
+      LocalDate agendadaPara) {
 
     public static CobrancaSaida de(Cobranca c, LocalDate hoje) {
       return new CobrancaSaida(c.getId(), c.getTenantId(), c.getEmpresaId(), c.getContratoId(), c.getRecorrenciaId(),
           Competencia.primeiroDia(c.getCompetencia()), c.getDataVencimento(), c.getDescricao(), c.getValor(),
           c.getDesconto(), c.getJuros(), c.getMulta(), c.getValorPago(), c.saldo(), c.getFormaPagamento(),
-          c.getStatus(), c.emAberto() ? c.diasAtraso(hoje) : 0, c.getCreatedAt(), c.getUpdatedAt(), c.getDeletedAt());
+          c.getStatus(), c.emAberto() ? c.diasAtraso(hoje) : 0, c.getCreatedAt(), c.getUpdatedAt(), c.getDeletedAt(),
+          c.getCategoriaId(), c.getCentroCustoId(), c.getVendedorId(), c.getSdrId(), c.getParceiroId(), c.getValorVariavel(),
+          c.isEncargosManuais(), c.getEncargosCalculadosEm(), c.getAgendadaPara());
     }
   }
+
+  /** Agendamento (status AGENDADO, §24): data em que o pagamento está marcado para cair. */
+  public record AgendamentoEntrada(@NotNull(message = "obrigatória") LocalDate data) {}
+
+  /** Item da composição da cobrança (§26): fixo, excedente de consumo ou adicional. */
+  public record ItemCobrancaSaida(UUID id, String tipo, UUID servicoId, String fabricante, String descricao,
+      BigDecimal quantidade, String unidade, BigDecimal valorUnitario, BigDecimal total) {}
 
   /** Baixa manual (RF-12): transferência ou outro recebimento fora do provedor. */
   public record BaixaManualEntrada(

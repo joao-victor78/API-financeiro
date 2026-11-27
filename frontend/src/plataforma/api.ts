@@ -88,6 +88,20 @@ export async function api<T = unknown>(caminho: string, op: Opcoes = {}): Promis
   return { data: corpo.data as T, message: corpo.message }
 }
 
+/** Envio de arquivo (multipart): documentos e extratos OFX. O navegador define o Content-Type com o boundary. */
+export async function enviarArquivo<T = unknown>(caminho: string, form: FormData, query?: Record<string, unknown>): Promise<{ data: T; message: string | null }> {
+  let r: Response
+  try {
+    r = await fetch(url(caminho, query), { method: 'POST', body: form, headers: cabecalhos(false), cache: 'no-store' })
+  } catch {
+    throw new ErroDaApi(0, 'Não foi possível falar com o servidor.')
+  }
+  const corpo = (await r.json().catch(() => null)) as Envelope<T> | null
+  if (r.status === 401) avisarTokenExpirado()
+  if (!r.ok || !corpo?.success) throw new ErroDaApi(r.status, corpo?.message ?? `Erro ${r.status}`, corpo?.errors ?? [])
+  return { data: corpo.data as T, message: corpo.message }
+}
+
 /** Download (exportação): a única resposta sem envelope. Token no cabeçalho, nunca na URL (§8.2). */
 export async function baixarArquivo(caminho: string, query: Record<string, unknown>, nome: string) {
   const r = await fetch(url(caminho, query), { headers: cabecalhos(false), cache: 'no-store' })

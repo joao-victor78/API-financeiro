@@ -68,6 +68,11 @@ spring:
     format:
       date: iso
 
+  servlet:
+    multipart:
+      max-file-size: ${ARMAZENAMENTO_TAMANHO_MAXIMO_MB:15}MB   # documentos e extratos OFX (§95, §96)
+      max-request-size: ${ARMAZENAMENTO_TAMANHO_MAXIMO_MB:15}MB
+
   web:
     locale: pt_BR
     locale-resolver: fixed
@@ -89,14 +94,38 @@ financeiro:
   jobs:
     ativos: ${JOBS_ENABLED:true}
     recorrencia-cron: ${JOB_RECORRENCIA_CRON:0 0 6 * * *}
+    encargos-cron: ${JOB_ENCARGOS_CRON:0 45 6 * * *}   # juros e multa automáticos (só tenants que ligaram)
     regua-cron: ${JOB_REGUA_CRON:0 0 7 * * *}
     fuso: America/Sao_Paulo
+  # Documentos (§95): "local" (disco, desenvolvimento) ou "s3" (AWS S3, MinIO, Wasabi...)
+  armazenamento:
+    tipo: ${ARMAZENAMENTO_TIPO:local}
+    diretorio: ${ARMAZENAMENTO_DIR:./dados/documentos}
+    tamanho-maximo-mb: ${ARMAZENAMENTO_TAMANHO_MAXIMO_MB:15}
+    s3:
+      bucket: ${S3_BUCKET:financeiro-documentos}
+      regiao: ${S3_REGIAO:us-east-1}
+      endpoint: ${S3_ENDPOINT:}                    # MinIO: http://minio:9000
+      chave-acesso: ${S3_CHAVE_ACESSO:}
+      chave-secreta: ${S3_CHAVE_SECRETA:}
+      path-style: ${S3_PATH_STYLE:false}           # true para MinIO
+      criptografia-servidor: ${S3_SSE:true}
+  # Segredos guardados no banco (segredo dos webhooks de saída): AES-256-GCM (§85)
+  criptografia:
+    chave: ${FINANCEIRO_CHAVE_CRIPTOGRAFIA:}
+  webhooks-saida:
+    permitir-http: ${WEBHOOKS_SAIDA_PERMITIR_HTTP:false}
+    permitir-rede-interna: ${WEBHOOKS_SAIDA_PERMITIR_REDE_INTERNA:false}
   webhook:
     # Segredo compartilhado com o provedor (HMAC-SHA256 da assinatura). Nunca vai para log (RNF-04).
     segredo: ${PROVEDOR_WEBHOOK_SEGREDO:troque-este-segredo}
     limite-por-minuto: ${WEBHOOK_LIMITE_POR_MINUTO:60}
   provedor:
-    nome: simulado
+    nome: ${PROVEDOR_PAGAMENTO:simulado}           # simulado | asaas
+    asaas:
+      url: ${ASAAS_URL:https://api-sandbox.asaas.com/v3}
+      chave-api: ${ASAAS_CHAVE_API:}
+      token-webhook: ${ASAAS_TOKEN_WEBHOOK:}
     pix-chave: ${PIX_CHAVE_RECEBEDOR:financeiro@empresa.com.br}
     pix-nome: ${PIX_NOME_RECEBEDOR:EMPRESA}
     pix-cidade: ${PIX_CIDADE_RECEBEDOR:GOIANIA}
@@ -107,6 +136,24 @@ financeiro:
     client-id: ${SVC_CLIENT_ID:financeiro}
     client-secret: ${SVC_CLIENT_SECRET:}
     timeout-ms: 3000                               # Contrato §9.6
+
+# Observabilidade (§98): saúde, métricas e Prometheus numa porta só da rede interna (não passa pelo gateway).
+management:
+  server:
+    port: ${MANAGEMENT_PORT:9085}
+  endpoints:
+    web:
+      base-path: /actuator
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  metrics:
+    tags:
+      application: financeiro
 
 springdoc:
   api-docs:

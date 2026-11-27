@@ -30,8 +30,21 @@ public interface ProvedorPagamento {
 
   Cobrado createBoleto(Solicitacao s);
 
-  /** Só link de pagamento: cartão recorrente (cartão salvo) depende da PD-4 (RN-23). */
+  /** Link de pagamento com cartão (o cliente digita o cartão na página do provedor). */
   Cobrado createCardPayment(Solicitacao s);
+
+  /**
+   * Cartão recorrente (§27): cobra um cartão já tokenizado no provedor. O módulo só conhece a referência
+   * do token (RN-22); a confirmação chega pelo webhook, como nos outros meios.
+   */
+  default Cobrado chargeSavedCard(String tokenCartao, Solicitacao s) {
+    throw new UnsupportedOperationException("O provedor " + nome() + " não cobra cartão salvo.");
+  }
+
+  /** Página do provedor onde o cliente cadastra o cartão para a cobrança recorrente (o número nunca passa aqui). */
+  default String linkCadastroCartao(UUID recorrenciaId, UUID empresaId) {
+    throw new UnsupportedOperationException("O provedor " + nome() + " não cadastra cartão para recorrência.");
+  }
 
   boolean refund(String referencia, BigDecimal valor);
 
@@ -43,7 +56,14 @@ public interface ProvedorPagamento {
   EventoProvedor processWebhook(WebhookRecebido payload);
 
   /** O que o módulo pede ao provedor. */
-  record Solicitacao(UUID pagamentoId, UUID cobrancaId, BigDecimal valor, String descricao, LocalDate vencimento) {}
+  record Solicitacao(UUID pagamentoId, UUID cobrancaId, BigDecimal valor, String descricao, LocalDate vencimento,
+      UUID empresaId) {
+
+    /** Formato anterior (sem a empresa), mantido para quem já chamava assim. */
+    public Solicitacao(UUID pagamentoId, UUID cobrancaId, BigDecimal valor, String descricao, LocalDate vencimento) {
+      this(pagamentoId, cobrancaId, valor, descricao, vencimento, null);
+    }
+  }
 
   /** Resposta neutra: nenhum campo específico de provedor vaza para a API (critério 1 do RF-04). */
   record Cobrado(String referencia, String pixCopiaCola, String boletoLinhaDigitavel, String boletoUrl,

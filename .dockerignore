@@ -7,3 +7,5 @@ keys/
 .vscode/
 .claude/
 scripts/
+dados/
+backups/

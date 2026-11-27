@@ -7,12 +7,21 @@ import { api, mensagemDe } from '@/plataforma/api'
 import { navegar, useRota } from '@/plataforma/rotas'
 import { aoMudarSessao, definirSessaoDireta, encerrarSessaoDireta, estaEmbutido, permissoesDoToken, sessaoAtual, type Sessao } from '@/plataforma/sessao'
 import { Auditoria } from '@/telas/Auditoria'
+import { Cadastros } from '@/telas/Cadastros'
 import { Cobrancas } from '@/telas/Cobrancas'
+import { Comissoes } from '@/telas/Comissoes'
+import { Conciliacao } from '@/telas/Conciliacao'
+import { Configuracoes } from '@/telas/Configuracoes'
+import { Contabilidade } from '@/telas/Contabilidade'
 import { ContasPagar } from '@/telas/ContasPagar'
 import { Dashboard } from '@/telas/Dashboard'
+import { DreTela } from '@/telas/Dre'
+import { FluxoCaixa } from '@/telas/FluxoCaixa'
 import { Inadimplencia } from '@/telas/Inadimplencia'
+import { NotasFiscais } from '@/telas/NotasFiscais'
 import { Recorrencias } from '@/telas/Recorrencias'
 import { Regua } from '@/telas/Regua'
+import { Webhooks } from '@/telas/Webhooks'
 
 /** As mesmas rotas e permissões do submenu em modulos/financeiro.json (infra-integrador-2026). */
 const TELAS = [
@@ -22,6 +31,15 @@ const TELAS = [
   { rota: '/recorrencias', nome: 'Recorrência', permissao: 'financeiro.recorrencia.ver', Tela: Recorrencias },
   { rota: '/regua', nome: 'Régua de cobrança', permissao: 'financeiro.regua.ver', Tela: Regua },
   { rota: '/inadimplencia', nome: 'Inadimplência', permissao: 'financeiro.inadimplencia.ver', Tela: Inadimplencia },
+  { rota: '/fluxo-caixa', nome: 'Fluxo de caixa', permissao: 'financeiro.fluxocaixa.ver', Tela: FluxoCaixa },
+  { rota: '/dre', nome: 'DRE', permissao: 'financeiro.dre.ver', Tela: DreTela },
+  { rota: '/conciliacao', nome: 'Conciliação', permissao: 'financeiro.conciliacao.ver', Tela: Conciliacao },
+  { rota: '/comissoes', nome: 'Comissões', permissao: 'financeiro.comissao.ver', Tela: Comissoes },
+  { rota: '/notas-fiscais', nome: 'Notas fiscais', permissao: 'financeiro.notafiscal.ver', Tela: NotasFiscais },
+  { rota: '/contabilidade', nome: 'Contabilidade', permissao: 'financeiro.contabilidade.ver', Tela: Contabilidade },
+  { rota: '/cadastros', nome: 'Cadastros', permissao: 'financeiro.cadastro.ver', Tela: Cadastros },
+  { rota: '/webhooks', nome: 'Webhooks', permissao: 'financeiro.webhook.administrar', Tela: Webhooks },
+  { rota: '/configuracoes', nome: 'Configurações', permissao: 'financeiro.configuracao.administrar', Tela: Configuracoes },
   { rota: '/auditoria', nome: 'Auditoria', permissao: 'financeiro.auditoria.ver', Tela: Auditoria },
 ]
 

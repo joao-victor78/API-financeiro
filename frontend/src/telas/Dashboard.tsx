@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { FilterBar, FormField, Input, PageHeader } from '@/components/ui'
 import { Conteudo, Indicador, linha, Tabela, Td, Th } from '@/components/modulo'
 import { useDados } from '@/lib/hooks'
-import { brl, competencia, mesAtual } from '@/lib/formato'
+import { brl, competencia, mesAtual, pct as fmtPct } from '@/lib/formato'
 
 interface Painel {
   aReceberHoje: number
@@ -14,6 +14,21 @@ interface Painel {
   cobrancasAtrasadas: number
   mrrAtual: number
   arr: number
+  // V2 (§74, §111); campos novos podem faltar numa API antiga
+  receitaMes?: number
+  despesasMes?: number
+  resultadoMes?: number
+  margemMes?: number | null
+  pagoMes?: number
+  entradasPrevistas30d?: number
+  saidasPrevistas30d?: number
+  saldoProjetado30d?: number
+  saldoBancario?: number | null
+  conciliacoesPendentes?: number
+  comissoesAPagar?: number
+  reajustesDoMes?: number
+  custoServicosMes?: number | null
+  margemBrutaMes?: number | null
 }
 
 interface Mrr {
@@ -53,6 +68,24 @@ export function Dashboard(_: { detalhe?: string }) {
               <Indicador rotulo="Contas a pagar no mês" valor={brl(d.contasAPagarMes)} />
               <Indicador rotulo="Inadimplência" valor={brl(d.inadimplenciaTotal)} detalhe="saldo vencido em aberto" />
               <Indicador rotulo="MRR" valor={brl(d.mrrAtual)} detalhe={`ARR ${brl(d.arr)}`} />
+            </div>
+          )}
+        </Conteudo>
+        <Conteudo carga={painel.carga}>
+          {(d) => d.receitaMes === undefined ? null : (
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+              <Indicador rotulo="Resultado do mês" valor={brl(d.resultadoMes)} tom={(d.resultadoMes ?? 0) < 0 ? 'erro' : 'ok'}
+                detalhe={`receita ${brl(d.receitaMes)} · despesas ${brl(d.despesasMes)}${d.margemMes != null ? ` · margem ${fmtPct(d.margemMes)}` : ''}`} />
+              <Indicador rotulo="Pago no mês" valor={brl(d.pagoMes)} detalhe="contas a pagar quitadas" />
+              <Indicador rotulo="Saldo bancário" valor={d.saldoBancario == null ? '—' : brl(d.saldoBancario)}
+                detalhe={d.saldoBancario == null ? 'cadastre as contas bancárias' : 'saldo inicial + movimentação'} tom={(d.saldoBancario ?? 0) < 0 ? 'erro' : undefined} />
+              <Indicador rotulo="Próximos 30 dias" valor={brl(d.saldoProjetado30d)} tom={(d.saldoProjetado30d ?? 0) < 0 ? 'erro' : undefined}
+                detalhe={`entra ${brl(d.entradasPrevistas30d)} · sai ${brl(d.saidasPrevistas30d)}`} />
+              <Indicador rotulo="Conciliação pendente" valor={d.conciliacoesPendentes ?? 0} detalhe="transações do extrato" />
+              <Indicador rotulo="Comissões a pagar" valor={brl(d.comissoesAPagar)} detalhe={d.reajustesDoMes ? `${d.reajustesDoMes} reajuste(s) previsto(s) no mês` : undefined} />
+              {d.margemBrutaMes !== undefined && d.custoServicosMes != null && (
+                <Indicador rotulo="Margem bruta (recorrência)" valor={fmtPct(d.margemBrutaMes)} detalhe={`custo dos serviços ${brl(d.custoServicosMes)}`} />
+              )}
             </div>
           )}
         </Conteudo>

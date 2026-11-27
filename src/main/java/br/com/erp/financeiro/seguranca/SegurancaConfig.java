@@ -50,6 +50,8 @@ public class SegurancaConfig {
         .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(regras -> regras
             .requestMatchers("/api/financeiro/health").permitAll()
+            // §98: actuator só na porta de gestão (MANAGEMENT_PORT), que fica na rede interna
+            .requestMatchers(org.springframework.boot.actuate.autoconfigure.security.servlet.EndpointRequest.toAnyEndpoint()).permitAll()
             .requestMatchers("/public/**").permitAll() // só o webhook; protegido por assinatura (RF-05)
             .requestMatchers("/api/financeiro/docs/**", "/api/financeiro/docs", "/api/financeiro/docs-json/**",
                 "/swagger-ui/**", "/swagger-ui.html").permitAll()

@@ -15,13 +15,13 @@ import java.util.zip.ZipOutputStream;
  * Geradores mínimos de CSV, XLSX (Office Open XML) e PDF para a exportação (RF-11), sem bibliotecas
  * externas. Cada linha é uma lista de células: String, BigDecimal ou null.
  */
-final class Planilhas {
+public final class Planilhas {
 
   private Planilhas() {}
 
   // ------------------------------------------------------------------ CSV (Excel pt-BR: ";" e BOM UTF-8)
 
-  static byte[] csv(List<String> cabecalho, List<List<Object>> linhas) {
+  public static byte[] csv(List<String> cabecalho, List<List<Object>> linhas) {
     StringBuilder sb = new StringBuilder("﻿");
     sb.append(String.join(";", cabecalho.stream().map(Planilhas::celulaCsv).toList())).append("\r\n");
     for (List<Object> l : linhas) {
@@ -40,7 +40,7 @@ final class Planilhas {
 
   // ------------------------------------------------------------------ XLSX
 
-  static byte[] xlsx(String aba, List<String> cabecalho, List<List<Object>> linhas) {
+  public static byte[] xlsx(String aba, List<String> cabecalho, List<List<Object>> linhas) {
     ByteArrayOutputStream bytes = new ByteArrayOutputStream();
     try (ZipOutputStream zip = new ZipOutputStream(bytes, StandardCharsets.UTF_8)) {
       entrada(zip, "[Content_Types].xml", """
@@ -130,7 +130,7 @@ final class Planilhas {
   private static final Charset LATIN1 = StandardCharsets.ISO_8859_1;
   private static final int LINHAS_POR_PAGINA = 48;
 
-  static byte[] pdf(String titulo, List<String> linhasDeTexto) {
+  public static byte[] pdf(String titulo, List<String> linhasDeTexto) {
     List<List<String>> paginas = new ArrayList<>();
     for (int i = 0; i < Math.max(1, linhasDeTexto.size()); i += LINHAS_POR_PAGINA) {
       paginas.add(linhasDeTexto.subList(Math.min(i, linhasDeTexto.size()), Math.min(i + LINHAS_POR_PAGINA, linhasDeTexto.size())));

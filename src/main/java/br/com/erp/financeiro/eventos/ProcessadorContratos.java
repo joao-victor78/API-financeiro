@@ -52,9 +52,14 @@ public class ProcessadorContratos {
       log.warn("Contrato assinado {} sem contratoId, empresaId ou itens; nenhuma regra criada.", e.id());
       return;
     }
+    // V2: vendedor, SDR e parceiro (comissões, §71) e índice/mês de reajuste (§69), quando o contrato informa.
+    Integer mes = inteiro(d.get("mesReajuste"));
     RegraEntrada regra = new RegraEntrada(contrato, empresa, texto(d.get("descricao")),
         enumOu(Periodicidade.class, d.get("periodicidade"), Periodicidade.MENSAL),
-        inteiro(d.get("diaGeracao")), null, enumOu(MeioPagamento.class, d.get("formaPagamento"), null), true, itens);
+        inteiro(d.get("diaGeracao")), null, enumOu(MeioPagamento.class, d.get("formaPagamento"), null), true, itens,
+        uuid(d.get("vendedorId")), uuid(d.get("sdrId")), uuid(d.get("parceiroId")), null, null,
+        enumOu(br.com.erp.financeiro.recorrencias.IndiceReajuste.class, d.get("indiceReajuste"), null),
+        mes == null ? null : Math.min(12, mes));
     if (!recorrencias.criarDeContrato(contrato, regra)) log.info("Contrato {} já tem regra de recorrência.", contrato);
   }
 
@@ -78,8 +83,12 @@ public class ProcessadorContratos {
       if (servico == null || qtd == null || unit == null) continue;
       String descricao = texto(m.get("descricao"));
       String unidade = texto(m.get("unidade"));
+      BigDecimal excedente = decimal(m.get("valorExcedente"));
+      BigDecimal custo = decimal(m.get("custoUnitario"));
       itens.add(new ItemEntrada(servico, descricao != null ? descricao : "Serviço", qtd,
-          unidade != null ? unidade : "UN", unit.setScale(2, java.math.RoundingMode.HALF_EVEN), decimal(m.get("franquia"))));
+          unidade != null ? unidade : "UN", unit.setScale(2, java.math.RoundingMode.HALF_EVEN), decimal(m.get("franquia")),
+          excedente == null ? null : excedente.setScale(2, java.math.RoundingMode.HALF_EVEN),
+          custo == null ? null : custo.setScale(2, java.math.RoundingMode.HALF_EVEN), texto(m.get("fabricante"))));
     }
     return itens;
   }

@@ -52,6 +52,43 @@ public class Recorrencia extends EntidadeBase {
   @Column(name = "vigencia_fim")
   private LocalDate vigenciaFim;
 
+  // ------------------------------------------------------------------ V2 (todos opcionais)
+
+  @Column(name = "vendedor_id")
+  private UUID vendedorId;
+
+  @Column(name = "sdr_id")
+  private UUID sdrId;
+
+  @Column(name = "parceiro_id")
+  private UUID parceiroId;
+
+  @Column(name = "categoria_id")
+  private UUID categoriaId;
+
+  @Column(name = "centro_custo_id")
+  private UUID centroCustoId;
+
+  /** Cartão recorrente (§27): cobra o cartão tokenizado no dia da geração. */
+  @Column(name = "cobranca_automatica", nullable = false)
+  private boolean cobrancaAutomatica;
+
+  @Column(name = "cartao_token_ref")
+  private String cartaoTokenRef;
+
+  @Column(name = "cartao_final")
+  private String cartaoFinal;
+
+  @Column(name = "cartao_bandeira")
+  private String cartaoBandeira;
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = "indice_reajuste")
+  private IndiceReajuste indiceReajuste;
+
+  @Column(name = "mes_reajuste")
+  private Integer mesReajuste;
+
   protected Recorrencia() {}
 
   public Recorrencia(UUID empresaId, UUID contratoId, String primeiraCompetencia, LocalDate vigenciaInicio) {
@@ -98,6 +135,38 @@ public class Recorrencia extends EntidadeBase {
     vigenciaFim = fim;
   }
 
+  /** Campos da V2: quem vendeu, classificação e reajuste anual. */
+  public void configurarComplementos(UUID vendedorId, UUID sdrId, UUID parceiroId, UUID categoriaId, UUID centroCustoId,
+      IndiceReajuste indiceReajuste, Integer mesReajuste) {
+    this.vendedorId = vendedorId;
+    this.sdrId = sdrId;
+    this.parceiroId = parceiroId;
+    this.categoriaId = categoriaId;
+    this.centroCustoId = centroCustoId;
+    this.indiceReajuste = indiceReajuste;
+    this.mesReajuste = mesReajuste;
+  }
+
+  /** Guarda só a referência do cartão no provedor, o final e a bandeira (RN-22). */
+  public void registrarCartao(String tokenRef, String fim, String bandeira, boolean automatica) {
+    this.cartaoTokenRef = tokenRef;
+    this.cartaoFinal = fim;
+    this.cartaoBandeira = bandeira;
+    this.cobrancaAutomatica = automatica;
+  }
+
+  public void removerCartao() {
+    this.cartaoTokenRef = null;
+    this.cartaoFinal = null;
+    this.cartaoBandeira = null;
+    this.cobrancaAutomatica = false;
+  }
+
+  /** Meses da periodicidade, para o MRR do ciclo. */
+  public int mesesDoCiclo() {
+    return periodicidade.meses();
+  }
+
   public Map<String, Object> instantaneo() {
     Map<String, Object> m = new LinkedHashMap<>();
     m.put("empresaId", empresaId);
@@ -110,7 +179,57 @@ public class Recorrencia extends EntidadeBase {
     m.put("formaPagamento", formaPagamento);
     m.put("ativa", ativa);
     m.put("vigenciaFim", vigenciaFim);
+    if (vendedorId != null) m.put("vendedorId", vendedorId);
+    if (categoriaId != null) m.put("categoriaId", categoriaId);
+    if (cobrancaAutomatica) m.put("cobrancaAutomatica", true);
+    if (cartaoFinal != null) m.put("cartaoFinal", cartaoFinal);
+    if (indiceReajuste != null) m.put("indiceReajuste", indiceReajuste);
+    if (mesReajuste != null) m.put("mesReajuste", mesReajuste);
     return m;
+  }
+
+  public UUID getVendedorId() {
+    return vendedorId;
+  }
+
+  public UUID getSdrId() {
+    return sdrId;
+  }
+
+  public UUID getParceiroId() {
+    return parceiroId;
+  }
+
+  public UUID getCategoriaId() {
+    return categoriaId;
+  }
+
+  public UUID getCentroCustoId() {
+    return centroCustoId;
+  }
+
+  public boolean isCobrancaAutomatica() {
+    return cobrancaAutomatica;
+  }
+
+  public String getCartaoTokenRef() {
+    return cartaoTokenRef;
+  }
+
+  public String getCartaoFinal() {
+    return cartaoFinal;
+  }
+
+  public String getCartaoBandeira() {
+    return cartaoBandeira;
+  }
+
+  public IndiceReajuste getIndiceReajuste() {
+    return indiceReajuste;
+  }
+
+  public Integer getMesReajuste() {
+    return mesReajuste;
   }
 
   public UUID getEmpresaId() {

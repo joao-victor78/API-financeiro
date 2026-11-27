@@ -3,6 +3,9 @@ package br.com.erp.financeiro.cobrancas;
 import br.com.erp.financeiro.api.ApiException;
 import br.com.erp.financeiro.api.Pagina;
 import br.com.erp.financeiro.auditoria.AuditoriaService;
+import br.com.erp.financeiro.cadastros.CadastroService;
+import br.com.erp.financeiro.cadastros.CategoriaFinanceira;
+import br.com.erp.financeiro.contabilidade.PeriodosContabeis;
 import br.com.erp.financeiro.cobrancas.CobrancaDtos.BaixaManualEntrada;
 import br.com.erp.financeiro.cobrancas.CobrancaDtos.CobrancaEntrada;
 import br.com.erp.financeiro.comum.Competencia;
@@ -24,6 +27,7 @@ import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
@@ -44,9 +48,13 @@ public class CobrancaService {
   private final PedidosPlataforma plataforma;
   private final ProvedorPagamento provedor;
   private final Relogio relogio;
+  private final CadastroService cadastros;
+  private final PeriodosContabeis periodos;
+  private final ApplicationEventPublisher eventos;
 
   public CobrancaService(CobrancaRepository cobrancas, PagamentoRepository pagamentos, PromessaRepository promessas,
-      AuditoriaService auditoria, Outbox outbox, PedidosPlataforma plataforma, ProvedorPagamento provedor, Relogio relogio) {
+      AuditoriaService auditoria, Outbox outbox, PedidosPlataforma plataforma, ProvedorPagamento provedor, Relogio relogio,
+      CadastroService cadastros, PeriodosContabeis periodos, ApplicationEventPublisher eventos) {
     this.cobrancas = cobrancas;
     this.pagamentos = pagamentos;
     this.promessas = promessas;
@@ -55,6 +63,9 @@ public class CobrancaService {
     this.plataforma = plataforma;
     this.provedor = provedor;
     this.relogio = relogio;
+    this.cadastros = cadastros;
+    this.periodos = periodos;
+    this.eventos = eventos;
   }
 
   public record Filtro(UUID clienteId, StatusCobranca status, LocalDate vencimentoInicio, LocalDate vencimentoFim,
@@ -87,10 +98,51 @@ public class CobrancaService {
   @Transactional
   public Cobranca lancar(CobrancaEntrada e) {
     validarDesconto(e.valor(), e.desconto());
+    periodos.exigirAberto(Competencia.de(e.competencia()));
     Cobranca c = Cobranca.nova(e.clienteId(), e.contratoId(), null, Competencia.de(e.competencia()), e.descricao(),
         e.vencimento(), e.valor(), e.desconto(), e.juros(), e.multa(), e.formaPagamento());
+    aplicarClassificacao(c, e);
+    if (Dinheiro.positivo(e.juros()) || Dinheiro.positivo(e.multa())) c.marcarEncargosManuais();
     if (e.vencimento().isBefore(relogio.hoje())) c.marcarAtrasada();
     return registrarNova(c);
+  }
+
+  /** Categoria (receita) e centro de custo do cadastro, e quem vendeu. Tudo opcional (§25, §71). */
+  private void aplicarClassificacao(Cobranca c, CobrancaEntrada e) {
+    cadastros.categoriaParaUso(e.categoriaId(), CategoriaFinanceira.Tipo.RECEITA, "categoriaId");
+    cadastros.centroParaUso(e.centroCustoId(), "centroCustoId");
+    c.classificar(e.categoriaId(), e.centroCustoId());
+    c.atribuirComercial(e.vendedorId(), e.sdrId(), e.parceiroId());
+  }
+
+  /** Agenda o pagamento (status AGENDADO, §24): sai da régua de atraso até a data marcada. */
+  @Transactional
+  public Cobranca agendar(UUID id, LocalDate data) {
+    Cobranca c = obterAtiva(id);
+    if (!(c.getStatus() == StatusCobranca.ABERTO || c.getStatus() == StatusCobranca.ATRASADO
+        || c.getStatus() == StatusCobranca.AGENDADO || c.getStatus() == StatusCobranca.PARCIAL)) {
+      throw ApiException.conflito("AGENDAMENTO_NAO_PERMITIDO", "Cobrança " + c.getStatus() + " não pode ser agendada.");
+    }
+    if (data.isBefore(relogio.hoje())) throw ApiException.campo("data", "DATA_PASSADA", "A data do agendamento não pode ser passada.");
+    Map<String, Object> antes = c.instantaneo();
+    c.agendar(data);
+    auditoria.registrar("AGENDAR", ENTIDADE, c.getId(), antes, c.instantaneo());
+    plataforma.timeline(c.getEmpresaId(), "financeiro.cobranca.agendada",
+        "Pagamento da cobrança " + curto(c.getId()) + " agendado para " + data.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")) + ".",
+        ROTA + c.getId());
+    return c;
+  }
+
+  @Transactional
+  public Cobranca desagendar(UUID id) {
+    Cobranca c = obterAtiva(id);
+    if (c.getStatus() != StatusCobranca.AGENDADO) {
+      throw ApiException.conflito("COBRANCA_NAO_AGENDADA", "A cobrança não está agendada.");
+    }
+    Map<String, Object> antes = c.instantaneo();
+    c.desagendar(relogio.hoje());
+    auditoria.registrar("DESAGENDAR", ENTIDADE, c.getId(), antes, c.instantaneo());
+    return c;
   }
 
   /** Grava, audita e avisa (financeiro.cobranca.criada depois do commit). Usado também pela recorrência. */
@@ -123,12 +175,17 @@ public class CobrancaService {
       throw ApiException.conflito("EDICAO_NAO_PERMITIDA", "Cobrança " + c.getStatus() + " não pode ser editada.");
     }
     validarDesconto(e.valor(), e.desconto());
+    periodos.exigirAberto(c.getCompetencia());
+    periodos.exigirAberto(Competencia.de(e.competencia()));
     BigDecimal devido = e.valor().subtract(Dinheiro.ouZero(e.desconto())).add(Dinheiro.ouZero(e.juros())).add(Dinheiro.ouZero(e.multa()));
     if (devido.compareTo(c.getValorPago()) <= 0) {
       throw ApiException.regra("SALDO_INVALIDO", "A edição deixaria a cobrança sem saldo; use a baixa para quitá-la.");
     }
+    boolean encargosMudaram = Dinheiro.de(e.juros()).compareTo(c.getJuros()) != 0 || Dinheiro.de(e.multa()).compareTo(c.getMulta()) != 0;
     c.editar(e.clienteId(), e.contratoId(), Competencia.de(e.competencia()), e.descricao(), e.vencimento(), e.valor(),
         e.desconto(), e.juros(), e.multa(), e.formaPagamento());
+    if (encargosMudaram) c.marcarEncargosManuais();
+    aplicarClassificacao(c, e);
     c.reavaliarAtraso(relogio.hoje());
     auditoria.registrar("EDITAR", ENTIDADE, c.getId(), antes, c.instantaneo());
     return c;
@@ -167,6 +224,7 @@ public class CobrancaService {
     }
     LocalDate data = e.dataPagamento() != null ? e.dataPagamento() : relogio.hoje();
     if (data.isAfter(relogio.hoje())) throw ApiException.campo("dataPagamento", "DATA_FUTURA", "A data do pagamento não pode ser futura.");
+    periodos.exigirAberto(Competencia.de(data));
     OffsetDateTime quando = data.equals(relogio.hoje()) ? relogio.agoraUtc()
         : data.atTime(LocalTime.NOON).atZone(Relogio.BRASILIA).toOffsetDateTime();
     Pagamento p = pagamentos.save(Pagamento.manual(c.getId(), e.valor(), quando, e.comprovanteId()));
@@ -183,6 +241,7 @@ public class CobrancaService {
   @Transactional
   public void aplicarPagamentoConfirmado(Cobranca c, Pagamento p) {
     Map<String, Object> antes = c.instantaneo();
+    if (p.getContaBancariaId() == null) p.definirContaBancaria(cadastros.contaPadraoDeRecebimento());
     StatusCobranca novo = c.aplicarPagamento(p.getValor());
     auditoria.registrar("BAIXAR", ENTIDADE, c.getId(), antes, c.instantaneo());
     for (PromessaPagamento promessa : promessas.pendentesDaCobranca(c.getId())) {
@@ -206,6 +265,7 @@ public class CobrancaService {
       plataforma.notificacao(c.getCreatedBy(), "COBRANCA_PAGA", "Pagamento recebido",
           "Cobrança " + curto(c.getId()) + ": " + Dinheiro.brl(p.getValor()) + " (" + novo + ").", ROTA + c.getId());
     }
+    eventos.publishEvent(new EventosInternos.PagamentoConfirmado(c, p)); // comissões (§71), na mesma transação
   }
 
   /** Estorno ou falha informados pelo provedor: publica financeiro.pagamento.falhou (contrato: estorno sai como falhou). */
@@ -224,6 +284,7 @@ public class CobrancaService {
       dados.put("valorPago", valorEstornado);
       plataforma.timeline(c.getEmpresaId(), TiposDeEvento.PAGAMENTO_FALHOU,
           "Pagamento de " + Dinheiro.brl(valorEstornado) + " estornado — cobrança " + curto(c.getId()) + ".", ROTA + c.getId());
+      eventos.publishEvent(new EventosInternos.PagamentoEstornado(c, p, valorEstornado));
     }
     dados.put("statusCobranca", c.getStatus());
     outbox.gravar(TiposDeEvento.PAGAMENTO_FALHOU, dados);

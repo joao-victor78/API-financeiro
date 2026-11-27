@@ -43,7 +43,44 @@ public class RecorrenciaItem extends EntidadeBase {
   @Column(name = "vigente_ate", length = 7)
   private String vigenteAte;
 
+  // ------------------------------------------------------------------ V2 (opcionais)
+
+  /** Preço por unidade acima da franquia (§41); nulo = o próprio valor unitário. */
+  @Column(name = "valor_excedente")
+  private BigDecimal valorExcedente;
+
+  /** Custo por unidade (§17, §39): base da margem. Visível só com financeiro.margem.ver. */
+  @Column(name = "custo_unitario")
+  private BigDecimal custoUnitario;
+
+  private String fabricante;
+
   protected RecorrenciaItem() {}
+
+  /** Item completo da V2: preço de excedente, custo e fabricante. */
+  public RecorrenciaItem(UUID recorrenciaId, UUID servicoId, String descricao, BigDecimal quantidade, String unidade,
+      BigDecimal valorUnitario, BigDecimal franquia, String vigenteDesde, BigDecimal valorExcedente, BigDecimal custoUnitario,
+      String fabricante) {
+    this(recorrenciaId, servicoId, descricao, quantidade, unidade, valorUnitario, franquia, vigenteDesde);
+    this.valorExcedente = valorExcedente == null ? null : Dinheiro.de(valorExcedente);
+    this.custoUnitario = custoUnitario == null ? null : Dinheiro.de(custoUnitario);
+    this.fabricante = fabricante == null || fabricante.isBlank() ? null : fabricante.trim();
+  }
+
+  /** Quantidade incluída no preço fixo: a franquia, ou a própria quantidade contratada. */
+  public BigDecimal permitido() {
+    return franquia != null ? franquia : quantidade;
+  }
+
+  /** Preço do que passar do permitido. */
+  public BigDecimal precoExcedente() {
+    return valorExcedente != null ? valorExcedente : valorUnitario;
+  }
+
+  /** Custo total do item fixo no ciclo; nulo sem custo cadastrado. */
+  public BigDecimal custoTotal() {
+    return custoUnitario == null ? null : quantidade.multiply(custoUnitario).setScale(2, RoundingMode.HALF_EVEN);
+  }
 
   public RecorrenciaItem(UUID recorrenciaId, UUID servicoId, String descricao, BigDecimal quantidade, String unidade,
       BigDecimal valorUnitario, BigDecimal franquia, String vigenteDesde) {
@@ -105,5 +142,17 @@ public class RecorrenciaItem extends EntidadeBase {
 
   public String getVigenteAte() {
     return vigenteAte;
+  }
+
+  public BigDecimal getValorExcedente() {
+    return valorExcedente;
+  }
+
+  public BigDecimal getCustoUnitario() {
+    return custoUnitario;
+  }
+
+  public String getFabricante() {
+    return fabricante;
   }
 }

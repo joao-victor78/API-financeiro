@@ -63,6 +63,37 @@ public class Cobranca extends EntidadeBase {
   @Column(name = "atraso_publicado_em")
   private OffsetDateTime atrasoPublicadoEm;
 
+  // ------------------------------------------------------------------ V2 (todos opcionais)
+
+  @Column(name = "categoria_id")
+  private UUID categoriaId;
+
+  @Column(name = "centro_custo_id")
+  private UUID centroCustoId;
+
+  @Column(name = "vendedor_id")
+  private UUID vendedorId;
+
+  @Column(name = "sdr_id")
+  private UUID sdrId;
+
+  @Column(name = "parceiro_id")
+  private UUID parceiroId;
+
+  /** Parte do valor que é excedente de consumo ou adicional (§26): não entra no MRR. */
+  @Column(name = "valor_variavel", nullable = false)
+  private BigDecimal valorVariavel = Dinheiro.ZERO;
+
+  /** Juros/multa digitados à mão: o cálculo automático não sobrescreve (§24). */
+  @Column(name = "encargos_manuais", nullable = false)
+  private boolean encargosManuais;
+
+  @Column(name = "encargos_calculados_em")
+  private LocalDate encargosCalculadosEm;
+
+  @Column(name = "agendada_para")
+  private LocalDate agendadaPara;
+
   protected Cobranca() {}
 
   public static Cobranca nova(UUID empresaId, UUID contratoId, UUID recorrenciaId, String competencia, String descricao,
@@ -159,6 +190,56 @@ public class Cobranca extends EntidadeBase {
     }
   }
 
+  // ------------------------------------------------------------------ V2
+
+  /** Categoria e centro de custo do cadastro (§25); nulos mantêm a cobrança como antes. */
+  public void classificar(UUID categoriaId, UUID centroCustoId) {
+    this.categoriaId = categoriaId;
+    this.centroCustoId = centroCustoId;
+  }
+
+  /** Quem vendeu (base das comissões, §71). */
+  public void atribuirComercial(UUID vendedorId, UUID sdrId, UUID parceiroId) {
+    this.vendedorId = vendedorId;
+    this.sdrId = sdrId;
+    this.parceiroId = parceiroId;
+  }
+
+  public void definirValorVariavel(BigDecimal v) {
+    this.valorVariavel = Dinheiro.de(v);
+  }
+
+  /** Encargos calculados pelo job (§24): só em cobrança sem encargo digitado à mão. */
+  public void aplicarEncargos(BigDecimal juros, BigDecimal multa, LocalDate quando) {
+    this.juros = Dinheiro.de(juros);
+    this.multa = Dinheiro.de(multa);
+    this.encargosCalculadosEm = quando;
+  }
+
+  public void marcarEncargosManuais() {
+    this.encargosManuais = true;
+  }
+
+  /** AGENDADO (§24): pagamento com data marcada (débito, cartão recorrente ou promessa formal do cliente). */
+  public void agendar(LocalDate data) {
+    this.agendadaPara = data;
+    this.status = StatusCobranca.AGENDADO;
+  }
+
+  /** Desfaz o agendamento: volta a ABERTO, ou ATRASADO se já venceu (RN-06). */
+  public void desagendar(LocalDate hoje) {
+    this.agendadaPara = null;
+    if (status == StatusCobranca.AGENDADO) {
+      status = dataVencimento.isBefore(hoje) ? StatusCobranca.ATRASADO
+          : valorPago.signum() > 0 ? StatusCobranca.PARCIAL : StatusCobranca.ABERTO;
+    }
+  }
+
+  /** Principal sobre o qual incidem juros e multa: valor − desconto (sem encargos anteriores). */
+  public BigDecimal principal() {
+    return Dinheiro.de(valor.subtract(desconto));
+  }
+
   /** Instantâneo para a auditoria (valor anterior e novo, RN-64). */
   public Map<String, Object> instantaneo() {
     Map<String, Object> m = new LinkedHashMap<>();
@@ -174,6 +255,12 @@ public class Cobranca extends EntidadeBase {
     m.put("valorPago", valorPago);
     m.put("formaPagamento", formaPagamento);
     m.put("status", status);
+    if (categoriaId != null) m.put("categoriaId", categoriaId);
+    if (centroCustoId != null) m.put("centroCustoId", centroCustoId);
+    if (vendedorId != null) m.put("vendedorId", vendedorId);
+    if (valorVariavel.signum() > 0) m.put("valorVariavel", valorVariavel);
+    if (agendadaPara != null) m.put("agendadaPara", agendadaPara);
+    if (encargosManuais) m.put("encargosManuais", true);
     return m;
   }
 
@@ -231,5 +318,41 @@ public class Cobranca extends EntidadeBase {
 
   public OffsetDateTime getAtrasoPublicadoEm() {
     return atrasoPublicadoEm;
+  }
+
+  public UUID getCategoriaId() {
+    return categoriaId;
+  }
+
+  public UUID getCentroCustoId() {
+    return centroCustoId;
+  }
+
+  public UUID getVendedorId() {
+    return vendedorId;
+  }
+
+  public UUID getSdrId() {
+    return sdrId;
+  }
+
+  public UUID getParceiroId() {
+    return parceiroId;
+  }
+
+  public BigDecimal getValorVariavel() {
+    return valorVariavel;
+  }
+
+  public boolean isEncargosManuais() {
+    return encargosManuais;
+  }
+
+  public LocalDate getEncargosCalculadosEm() {
+    return encargosCalculadosEm;
+  }
+
+  public LocalDate getAgendadaPara() {
+    return agendadaPara;
   }
 }
