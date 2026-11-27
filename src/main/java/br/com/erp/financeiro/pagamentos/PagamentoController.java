@@ -72,6 +72,19 @@ public class PagamentoController {
     return Resposta.ok(pagamentos.daCobranca(id).stream().map(PagamentoSaida::de).toList());
   }
 
+  public record EstornoEntrada(
+      @Positive(message = "deve ser maior que zero") @Digits(integer = 13, fraction = 2, message = "no máximo 2 casas decimais") BigDecimal valor,
+      @jakarta.validation.constraints.NotBlank(message = "obrigatório")
+      @jakarta.validation.constraints.Size(max = 300, message = "até 300 caracteres") String motivo) {}
+
+  /** §28 refund(): estorno total (sem valor) ou parcial, pelo provedor quando o pagamento veio dele. */
+  @Operation(summary = "Estornar um pagamento confirmado (total ou parcial)")
+  @PostMapping("/pagamentos/{id}/estorno")
+  @PreAuthorize("hasAuthority('financeiro.pagamento.estornar')")
+  public Resposta<PagamentoSaida> estornar(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody EstornoEntrada e) {
+    return Resposta.ok(PagamentoSaida.de(pagamentos.estornar(id, e.valor(), e.motivo())), "Pagamento estornado.");
+  }
+
   public record SimulacaoEntrada(@Positive @Digits(integer = 13, fraction = 2) BigDecimal valor) {}
 
   /**

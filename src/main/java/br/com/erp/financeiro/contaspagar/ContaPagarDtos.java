@@ -11,7 +11,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-/** contratos/financeiro.yaml: ContaPagar, ContaPagarEntrada. */
+/** contratos/financeiro.yaml: ContaPagar, ContaPagarEntrada (+ campos opcionais da V2 no fim). */
 public final class ContaPagarDtos {
 
   private ContaPagarDtos() {}
@@ -26,12 +26,28 @@ public final class ContaPagarDtos {
       @NotNull(message = "obrigatório") @Positive(message = "deve ser maior que zero")
       @Digits(integer = 13, fraction = 2, message = "no máximo 2 casas decimais") BigDecimal valor,
       @Size(max = 60, message = "até 60 caracteres") String documento,
-      @Size(max = 500, message = "até 500 caracteres") String observacoes) {}
+      @Size(max = 500, message = "até 500 caracteres") String observacoes,
+      // V2, opcionais: cadastros (§25) e arquivo do documento (§96)
+      UUID categoriaId,
+      UUID centroCustoId,
+      UUID contaBancariaId,
+      UUID documentoId) {
+
+    /** Formato anterior. */
+    public ContaPagarEntrada(String fornecedorNome, String fornecedorDocumento, String categoria, String centroCusto,
+        LocalDate competencia, LocalDate vencimento, BigDecimal valor, String documento, String observacoes) {
+      this(fornecedorNome, fornecedorDocumento, categoria, centroCusto, competencia, vencimento, valor, documento, observacoes,
+          null, null, null, null);
+    }
+  }
 
   public record PagamentoContaEntrada(
       @Positive(message = "deve ser maior que zero")
       @Digits(integer = 13, fraction = 2, message = "no máximo 2 casas decimais") BigDecimal valorPago,
-      LocalDate dataPagamento) {}
+      LocalDate dataPagamento,
+      UUID contaBancariaId) {}
+
+  public record AnexoEntrada(@NotNull(message = "obrigatório") UUID documentoId) {}
 
   public record ContaPagarSaida(
       UUID id,
@@ -52,13 +68,18 @@ public final class ContaPagarDtos {
       LocalDate dataPagamento,
       BigDecimal valorPago,
       UUID createdBy,
-      OffsetDateTime createdAt) {
+      OffsetDateTime createdAt,
+      UUID categoriaId,
+      UUID centroCustoId,
+      UUID contaBancariaId,
+      UUID documentoId) {
 
     public static ContaPagarSaida de(ContaPagar c) {
       return new ContaPagarSaida(c.getId(), c.getTenantId(), c.getFornecedorNome(), c.getFornecedorDocumento(),
           c.getCategoria(), c.getCentroCusto(), Competencia.primeiroDia(c.getCompetencia()), c.getDataVencimento(),
           c.getValor(), c.getDocumento(), c.getObservacoes(), c.getStatus(), c.aprovada(), c.getAprovadoPor(),
-          c.getAprovadoEm(), c.getDataPagamento(), c.getValorPago(), c.getCreatedBy(), c.getCreatedAt());
+          c.getAprovadoEm(), c.getDataPagamento(), c.getValorPago(), c.getCreatedBy(), c.getCreatedAt(),
+          c.getCategoriaId(), c.getCentroCustoId(), c.getContaBancariaId(), c.getDocumentoId());
     }
   }
 }

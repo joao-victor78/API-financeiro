@@ -60,6 +60,21 @@ public class Pagamento extends EntidadeBase {
   @Column(name = "comprovante_id")
   private UUID comprovanteId;
 
+  // ------------------------------------------------------------------ V2 (opcionais)
+
+  /** Conta bancária em que o dinheiro entrou (fluxo de caixa e conciliação, §32). */
+  @Column(name = "conta_bancaria_id")
+  private UUID contaBancariaId;
+
+  @Column(name = "estornado_em")
+  private OffsetDateTime estornadoEm;
+
+  @Column(name = "valor_estornado")
+  private BigDecimal valorEstornado;
+
+  @Column(name = "motivo_estorno")
+  private String motivoEstorno;
+
   protected Pagamento() {}
 
   /** Pedido feito ao provedor (PIX, boleto ou cartão), aguardando confirmação. */
@@ -108,6 +123,34 @@ public class Pagamento extends EntidadeBase {
 
   public void estornar() {
     status = StatusPagamento.ESTORNADO;
+  }
+
+  /** Estorno pedido pelo usuário (§28 refund) ou informado pelo provedor, com valor e motivo. */
+  public void estornar(BigDecimal valor, String motivo, OffsetDateTime quando) {
+    status = StatusPagamento.ESTORNADO;
+    valorEstornado = Dinheiro.de(valor);
+    motivoEstorno = motivo;
+    estornadoEm = quando;
+  }
+
+  public void definirContaBancaria(UUID contaBancariaId) {
+    this.contaBancariaId = contaBancariaId;
+  }
+
+  public UUID getContaBancariaId() {
+    return contaBancariaId;
+  }
+
+  public OffsetDateTime getEstornadoEm() {
+    return estornadoEm;
+  }
+
+  public BigDecimal getValorEstornado() {
+    return valorEstornado;
+  }
+
+  public String getMotivoEstorno() {
+    return motivoEstorno;
   }
 
   public void expirar() {

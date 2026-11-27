@@ -39,10 +39,12 @@ public class CobrancaController {
       "criadoEm,desc", Sort.by("createdAt").descending().and(Sort.by("id")));
 
   private final CobrancaService cobrancas;
+  private final CobrancaItemRepository itens;
   private final Relogio relogio;
 
-  public CobrancaController(CobrancaService cobrancas, Relogio relogio) {
+  public CobrancaController(CobrancaService cobrancas, CobrancaItemRepository itens, Relogio relogio) {
     this.cobrancas = cobrancas;
+    this.itens = itens;
     this.relogio = relogio;
   }
 
@@ -104,5 +106,28 @@ public class CobrancaController {
     Pagamento p = cobrancas.baixaManual(id, e);
     return ResponseEntity.created(URI.create("/api/financeiro/pagamentos/" + p.getId()))
         .body(Resposta.ok(PagamentoSaida.de(p), "Baixa registrada."));
+  }
+
+  /** §24: status AGENDADO com a data em que o pagamento vai cair (débito agendado, acordo com o cliente). */
+  @PostMapping("/{id}/agendamento")
+  @PreAuthorize("hasAuthority('financeiro.contareceber.editar')")
+  public Resposta<CobrancaSaida> agendar(@PathVariable UUID id, @Valid @RequestBody CobrancaDtos.AgendamentoEntrada e) {
+    return Resposta.ok(CobrancaSaida.de(cobrancas.agendar(id, e.data()), relogio.hoje()), "Pagamento agendado.");
+  }
+
+  @DeleteMapping("/{id}/agendamento")
+  @PreAuthorize("hasAuthority('financeiro.contareceber.editar')")
+  public Resposta<CobrancaSaida> desagendar(@PathVariable UUID id) {
+    return Resposta.ok(CobrancaSaida.de(cobrancas.desagendar(id), relogio.hoje()), "Agendamento desfeito.");
+  }
+
+  /** §26: composição da cobrança gerada pela recorrência (fixo, excedente, adicional). */
+  @GetMapping("/{id}/itens")
+  @PreAuthorize("hasAuthority('financeiro.contareceber.ver')")
+  public Resposta<java.util.List<CobrancaDtos.ItemCobrancaSaida>> itens(@PathVariable UUID id) {
+    cobrancas.obter(id); // 404 para outro tenant
+    return Resposta.ok(itens.daCobranca(id).stream().map(i -> new CobrancaDtos.ItemCobrancaSaida(i.getId(), i.getTipo().name(),
+        i.getServicoId(), i.getFabricante(), i.getDescricao(), i.getQuantidade(), i.getUnidade(), i.getValorUnitario(),
+        i.getTotal())).toList());
   }
 }

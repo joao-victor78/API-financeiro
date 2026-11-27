@@ -1,13 +1,15 @@
 import { useState, type FormEvent } from 'react'
-import { Banknote, CreditCard, FileDown, FileText, Pencil, Plus, QrCode, Receipt, Trash2, Zap } from 'lucide-react'
+import { Banknote, CalendarClock, CreditCard, FileDown, FileText, Pencil, Plus, QrCode, Receipt, Trash2, Undo2, Zap } from 'lucide-react'
 import { Button, DetailField, DetailSection, FilterBar, FormField, FormSection, Input, Modal, PageHeader, Pagination, Select, Tabs } from '@/components/ui'
-import { CabecalhoDeDetalhe, Conteudo, Copiar, linha, Status, Tabela, Td, Th } from '@/components/modulo'
+import { BaixarDocumento, CabecalhoDeDetalhe, Conteudo, Copiar, linha, Status, Tabela, Td, Th } from '@/components/modulo'
 import { avisar } from '@/lib/avisos'
+import { useCadastros } from '@/lib/cadastros'
 import { useEmpresas } from '@/lib/empresas'
 import { useAcao, useDados, usePermissao } from '@/lib/hooks'
-import { brl, CANAIS, competencia, curto, data, dataHora, etapa, FORMAS, hoje, ROTULOS } from '@/lib/formato'
+import { brl, CANAIS, competencia, curto, data, dataHora, etapa, FORMAS, hoje, numero, ROTULOS } from '@/lib/formato'
 import { api, baixarArquivo, ErroDaApi, mensagemDe, type Pagina } from '@/plataforma/api'
 import { navegar } from '@/plataforma/rotas'
+import { NovaNota } from './NotasFiscais'
 
 export interface Cobranca {
   id: string
@@ -27,7 +29,33 @@ export interface Cobranca {
   status: string
   diasAtraso: number
   deletedAt: string | null
+  // V2 (§24, §25, §26, §71); opcionais para seguir funcionando com a API anterior
+  categoriaId?: string | null
+  centroCustoId?: string | null
+  vendedorId?: string | null
+  sdrId?: string | null
+  parceiroId?: string | null
+  valorVariavel?: number | null
+  encargosManuais?: boolean
+  encargosCalculadosEm?: string | null
+  agendadaPara?: string | null
 }
+
+interface ItemCobranca {
+  id: string
+  tipo: string
+  servicoId: string | null
+  fabricante: string | null
+  descricao: string
+  quantidade: number
+  unidade: string | null
+  valorUnitario: number
+  total: number
+}
+
+interface NotaDaCobranca { id: string; modelo: string; numero: string; serie: string | null; dataEmissao: string; valor: number; status: string; documentoId: string | null }
+
+const TIPOS_ITEM: Record<string, string> = { FIXO: 'Mensalidade', EXCEDENTE: 'Excedente de consumo', ADICIONAL: 'Adicional' }
 
 interface Pagamento {
   pagamentoId: string
@@ -42,6 +70,9 @@ interface Pagamento {
   expiraEm: string | null
   confirmadoEm: string | null
   createdAt: string
+  estornadoEm?: string | null
+  valorEstornado?: number | null
+  motivoEstorno?: string | null
 }
 
 interface Disparo { id: string; diasOffset: number; canal: string; situacao: string; disparadoEm: string }
@@ -149,7 +180,12 @@ function FormularioDeCobranca({ atual, aoFechar, aoSalvar }: { atual: Cobranca |
     competencia: (atual?.competencia ?? hoje()).slice(0, 7), vencimento: atual?.vencimento ?? '',
     valor: atual ? String(atual.valor) : '', desconto: atual?.desconto ? String(atual.desconto) : '',
     juros: atual?.juros ? String(atual.juros) : '', multa: atual?.multa ? String(atual.multa) : '', formaPagamento: atual?.formaPagamento ?? '',
+    categoriaId: atual?.categoriaId ?? '', centroCustoId: atual?.centroCustoId ?? '',
+    vendedorId: atual?.vendedorId ?? '', sdrId: atual?.sdrId ?? '', parceiroId: atual?.parceiroId ?? '',
   })
+  const cad = useCadastros()
+  const categorias = cad.categorias.filter((c) => c.tipo === 'RECEITA' && (c.ativa || c.id === f.categoriaId))
+  const centros = cad.centros.filter((c) => c.ativo || c.id === f.centroCustoId)
   const [erro, setErro] = useState<ErroDaApi | null>(null)
   const [enviando, setEnviando] = useState(false)
   const campo = (k: keyof typeof f) => ({ value: f[k], onChange: (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value }) })
@@ -194,7 +230,32 @@ function FormularioDeCobranca({ atual, aoFechar, aoSalvar }: { atual: Cobranca |
           </FormField>
           <FormField label="Desconto (R$)" error={erro?.doCampo('desconto')}><Input type="number" step="0.01" min="0" {...campo('desconto')} /></FormField>
           <FormField label="Juros (R$)"><Input type="number" step="0.01" min="0" {...campo('juros')} /></FormField>
-          <FormField label="Multa (R$)"><Input type="number" step="0.01" min="0" {...campo('multa')} /></FormField>
+          <FormField label="Multa (R$)" hint="Juros ou multa digitados aqui não são recalculados automaticamente"><Input type="number" step="0.01" min="0" {...campo('multa')} /></FormField>
+        </FormSection>
+        {(categorias.length > 0 || centros.length > 0) && (
+          <FormSection number={3} title="Classificação">
+            {categorias.length > 0 && (
+              <FormField label="Categoria" error={erro?.doCampo('categoriaId')} hint="Define a linha do DRE">
+                <Select {...campo('categoriaId')}>
+                  <option value="">Sem categoria</option>
+                  {categorias.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                </Select>
+              </FormField>
+            )}
+            {centros.length > 0 && (
+              <FormField label="Centro de custo" error={erro?.doCampo('centroCustoId')}>
+                <Select {...campo('centroCustoId')}>
+                  <option value="">Sem centro de custo</option>
+                  {centros.map((c) => <option key={c.id} value={c.id}>{c.codigo} · {c.nome}</option>)}
+                </Select>
+              </FormField>
+            )}
+          </FormSection>
+        )}
+        <FormSection number={categorias.length > 0 || centros.length > 0 ? 4 : 3} title="Comissão (opcional)">
+          <CampoUuid label="Vendedor (id do usuário)" valor={f.vendedorId} onChange={(v) => setF({ ...f, vendedorId: v })} erro={erro?.doCampo('vendedorId')} />
+          <CampoUuid label="SDR" valor={f.sdrId} onChange={(v) => setF({ ...f, sdrId: v })} erro={erro?.doCampo('sdrId')} />
+          <CampoUuid label="Parceiro" valor={f.parceiroId} onChange={(v) => setF({ ...f, parceiroId: v })} erro={erro?.doCampo('parceiroId')} />
         </FormSection>
         {erro && !erro.erros.some((x) => x.campo) && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{erro.detalhe}</p>}
       </form>
@@ -221,7 +282,14 @@ function Detalhe({ id, nomeEmpresa, aoEditar, aoMudar }: { id: string; nomeEmpre
   const pagamentos = useDados<Pagamento[]>(`/cobrancas/${id}/pagamentos`)
   const disparos = useDados<Disparo[]>(`/cobrancas/${id}/disparos`)
   const promessas = useDados<Promessa[]>(`/cobrancas/${id}/promessas`)
+  const itens = useDados<ItemCobranca[]>(`/cobrancas/${id}/itens`)
+  const veNotas = tem('financeiro.notafiscal.ver')
+  const notas = useDados<Pagina<NotaDaCobranca>>(veNotas ? '/notas-fiscais' : null, { cobrancaId: id, tamanho: 50 })
+  const cad = useCadastros()
   const { executar, ocupado } = useAcao()
+  const [estornando, setEstornando] = useState<Pagamento | null>(null)
+  const [novaNota, setNovaNota] = useState(false)
+  const [agendarPara, setAgendarPara] = useState('')
   const c = cobranca.dados
   const edita = tem('financeiro.contareceber.editar')
 
@@ -231,6 +299,14 @@ function Detalhe({ id, nomeEmpresa, aoEditar, aoMudar }: { id: string; nomeEmpre
     promessas.recarregar()
     aoMudar()
   }
+  const agendar = (e: FormEvent) => {
+    e.preventDefault()
+    void executar(() => api(`/cobrancas/${id}/agendamento`, { method: 'POST', body: { data: agendarPara } }), () => {
+      setAgendarPara('')
+      recarregar()
+    })
+  }
+  const desagendar = () => executar(() => api(`/cobrancas/${id}/agendamento`, { method: 'DELETE' }), recarregar)
   const pedir = (meio: string) => executar(() => api(`/cobrancas/${id}/pagamento/${meio}`, { method: 'POST' }), () => {
     setAba(1)
     recarregar()
@@ -263,7 +339,7 @@ function Detalhe({ id, nomeEmpresa, aoEditar, aoMudar }: { id: string; nomeEmpre
           )}
         </>}
       />
-      <Tabs tabs={['Resumo', 'Pagamentos', 'Promessas', 'Régua']} active={aba} onChange={setAba} />
+      <Tabs tabs={['Resumo', 'Pagamentos', 'Promessas', 'Régua', 'Composição', ...(veNotas ? ['Notas fiscais'] : [])]} active={aba} onChange={setAba} />
       <div className="min-h-0 flex-1 overflow-y-auto p-6">
         {aba === 0 && (
           <>
@@ -279,14 +355,34 @@ function Detalhe({ id, nomeEmpresa, aoEditar, aoMudar }: { id: string; nomeEmpre
               <DetailField label="Forma de pagamento">{c.formaPagamento ? FORMAS[c.formaPagamento] : null}</DetailField>
               <DetailField label="Recorrência">{c.recorrenciaId ? `#${curto(c.recorrenciaId)}` : 'Avulsa'}</DetailField>
               <DetailField label="Empresa (id do CRM)" colSpan={2}><span className="font-mono text-xs">{c.clienteId}</span></DetailField>
+              {c.agendadaPara && <DetailField label="Pagamento agendado para">{data(c.agendadaPara)}</DetailField>}
+              {c.encargosCalculadosEm && <DetailField label="Encargos calculados em">{data(c.encargosCalculadosEm)}</DetailField>}
+              {c.encargosManuais && <DetailField label="Encargos">Digitados à mão (sem recálculo automático)</DetailField>}
             </DetailSection>
+            {(c.categoriaId || c.centroCustoId || c.vendedorId || c.sdrId || c.parceiroId || !!c.valorVariavel) && (
+              <DetailSection number={3} title="Classificação e comissão">
+                {c.categoriaId && <DetailField label="Categoria">{cad.nomeCategoria(c.categoriaId)}</DetailField>}
+                {c.centroCustoId && <DetailField label="Centro de custo">{cad.centros.find((x) => x.id === c.centroCustoId)?.nome ?? `#${curto(c.centroCustoId)}`}</DetailField>}
+                {c.vendedorId && <DetailField label="Vendedor"><span className="font-mono text-xs">#{curto(c.vendedorId)}</span></DetailField>}
+                {c.sdrId && <DetailField label="SDR"><span className="font-mono text-xs">#{curto(c.sdrId)}</span></DetailField>}
+                {c.parceiroId && <DetailField label="Parceiro"><span className="font-mono text-xs">#{curto(c.parceiroId)}</span></DetailField>}
+                {!!c.valorVariavel && <DetailField label="Parte variável (consumo e adicionais)">{brl(c.valorVariavel)}</DetailField>}
+              </DetailSection>
+            )}
             {edita && pagavel && (
-              <DetailSection number={3} title="Receber">
+              <DetailSection number={4} title="Receber">
                 <div className="flex flex-wrap gap-2 sm:col-span-2">
                   <Button size="sm" loading={ocupado} onClick={() => pedir('pix')}><QrCode aria-hidden className="size-3.5" /> Gerar PIX</Button>
                   <Button size="sm" variant="outline" disabled={ocupado} onClick={() => pedir('boleto')}><FileText aria-hidden className="size-3.5" /> Gerar boleto</Button>
                   <Button size="sm" variant="outline" disabled={ocupado} onClick={() => pedir('cartao')}><CreditCard aria-hidden className="size-3.5" /> Link de cartão</Button>
                 </div>
+                <form onSubmit={agendar} className="flex flex-wrap items-end gap-2 sm:col-span-2">
+                  <FormField label={c.status === 'AGENDADO' ? 'Reagendar pagamento para' : 'Agendar pagamento para'} hint="Débito agendado ou data combinada com o cliente">
+                    <Input type="date" min={hoje()} required value={agendarPara} onChange={(e) => setAgendarPara(e.target.value)} className="w-auto" />
+                  </FormField>
+                  <Button type="submit" size="sm" variant="outline" disabled={ocupado || !agendarPara}><CalendarClock aria-hidden className="size-3.5" /> Agendar</Button>
+                  {c.status === 'AGENDADO' && <Button size="sm" variant="ghost" disabled={ocupado} onClick={desagendar}>Desfazer agendamento</Button>}
+                </form>
               </DetailSection>
             )}
           </>
@@ -311,7 +407,17 @@ function Detalhe({ id, nomeEmpresa, aoEditar, aoMudar }: { id: string; nomeEmpre
                             <Zap aria-hidden className="size-3.5" /> Simular pagamento
                           </Button>
                         )}
+                        {p.status === 'CONFIRMADO' && tem('financeiro.pagamento.estornar') && (
+                          <Button size="sm" variant="outline" className="ml-auto" disabled={ocupado} onClick={() => setEstornando(p)}>
+                            <Undo2 aria-hidden className="size-3.5" /> Estornar
+                          </Button>
+                        )}
                       </div>
+                      {p.estornadoEm && (
+                        <p className="mt-2 text-xs text-red-600 dark:text-red-400">
+                          Estornado {brl(p.valorEstornado)} em {dataHora(p.estornadoEm)}{p.motivoEstorno && ` · ${p.motivoEstorno}`}
+                        </p>
+                      )}
                       {p.pixQrCode && <img src={p.pixQrCode} alt="QR code do PIX" width={176} height={176} className="mt-3 rounded-lg border border-borda bg-white p-1" />}
                       {pendente(p) && (p.pixCopiaCola ?? p.boletoLinhaDigitavel) && (
                         <div className="mt-3 flex gap-2">
@@ -355,8 +461,79 @@ function Detalhe({ id, nomeEmpresa, aoEditar, aoMudar }: { id: string; nomeEmpre
             )}
           </Conteudo>
         )}
+
+        {aba === 4 && (
+          <Conteudo carga={itens.carga} vazio={(l) => l.length === 0} textoVazio={c.recorrenciaId ? 'Cobrança gerada antes da composição por itens' : 'Cobrança avulsa: valor único, sem itens'}>
+            {(lista) => (
+              <>
+                <Tabela cabecalho={<><Th>Item</Th><Th>Tipo</Th><Th num>Qtd.</Th><Th num>Unitário</Th><Th num>Total</Th></>}>
+                  {lista.map((i) => (
+                    <tr key={i.id} className={linha}>
+                      <Td>
+                        <p className="font-medium text-titulo">{i.descricao}</p>
+                        {i.fabricante && <p className="text-xs text-texto-3">{i.fabricante}</p>}
+                      </Td>
+                      <Td>{TIPOS_ITEM[i.tipo] ?? i.tipo}</Td>
+                      <Td num>{numero(i.quantidade)}{i.unidade && ` ${i.unidade}`}</Td>
+                      <Td num>{brl(i.valorUnitario)}</Td>
+                      <Td num className="font-semibold text-titulo">{brl(i.total)}</Td>
+                    </tr>
+                  ))}
+                </Tabela>
+                <p className="mt-2 text-right text-sm text-texto-2">Soma dos itens: <strong className="text-titulo">{brl(lista.reduce((s, i) => s + i.total, 0))}</strong></p>
+              </>
+            )}
+          </Conteudo>
+        )}
+
+        {aba === 5 && veNotas && (
+          <>
+            <Conteudo carga={notas.carga} vazio={(p) => p.itens.length === 0} textoVazio="Nenhuma nota registrada para esta cobrança">
+              {(p) => (
+                <Tabela cabecalho={<><Th>Nota</Th><Th>Emissão</Th><Th num>Valor</Th><Th>Situação</Th><Th /></>}>
+                  {p.itens.map((n) => (
+                    <tr key={n.id} className={linha}>
+                      <Td>{n.modelo} nº {n.numero}{n.serie && ` série ${n.serie}`}</Td>
+                      <Td>{data(n.dataEmissao)}</Td>
+                      <Td num>{brl(n.valor)}</Td>
+                      <Td><Status status={n.status} /></Td>
+                      <Td className="text-right">{n.documentoId && tem('financeiro.documento.ver') && <BaixarDocumento id={n.documentoId} />}</Td>
+                    </tr>
+                  ))}
+                </Tabela>
+              )}
+            </Conteudo>
+            {tem('financeiro.notafiscal.registrar') && !c.deletedAt && (
+              <div className="mt-4 flex justify-end"><Button size="sm" variant="outline" onClick={() => setNovaNota(true)}><Plus aria-hidden className="size-3.5" /> Registrar nota emitida</Button></div>
+            )}
+          </>
+        )}
       </div>
+      {estornando && <Estorno pagamento={estornando} aoFechar={() => setEstornando(null)} aoEstornar={() => { setEstornando(null); recarregar() }} />}
+      {novaNota && <NovaNota cobrancaId={id} aoFechar={() => setNovaNota(false)} aoSalvar={() => { setNovaNota(false); notas.recarregar() }} />}
     </div>
+  )
+}
+
+/** §28 refund(): total ou parcial; pelo provedor quando o pagamento veio dele. */
+function Estorno({ pagamento, aoFechar, aoEstornar }: { pagamento: Pagamento; aoFechar: () => void; aoEstornar: () => void }) {
+  const { executar, ocupado } = useAcao()
+  const [f, setF] = useState({ valor: String(pagamento.valor), motivo: '' })
+  return (
+    <Modal open onClose={aoFechar} size="md" title="Estornar pagamento" subtitle={`${FORMAS[pagamento.meio] ?? pagamento.meio} · ${brl(pagamento.valor)} · confirmado ${dataHora(pagamento.confirmadoEm)}`}
+      footer={<><Button variant="outline" onClick={aoFechar}>Cancelar</Button><Button type="submit" variant="danger" form="form-estorno" loading={ocupado}>Estornar</Button></>}>
+      <form id="form-estorno" onSubmit={(e) => {
+        e.preventDefault()
+        void executar(() => api(`/pagamentos/${pagamento.pagamentoId}/estorno`, { method: 'POST', body: { valor: Number(f.valor), motivo: f.motivo.trim() } }), aoEstornar)
+      }}>
+        <FormSection title="Estorno">
+          <FormField label="Valor (R$)" required hint="Menor que o pago = estorno parcial. O saldo volta para a cobrança.">
+            <Input type="number" step="0.01" min="0.01" max={pagamento.valor} required value={f.valor} onChange={(e) => setF({ ...f, valor: e.target.value })} />
+          </FormField>
+          <FormField label="Motivo" required><Input required maxLength={300} value={f.motivo} onChange={(e) => setF({ ...f, motivo: e.target.value })} /></FormField>
+        </FormSection>
+      </form>
+    </Modal>
   )
 }
 

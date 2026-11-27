@@ -11,6 +11,7 @@ import java.util.UUID;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
@@ -21,6 +22,7 @@ import org.springframework.stereotype.Component;
  * segredo compartilhado (PROVEDOR_WEBHOOK_SEGREDO). valorPago com 2 casas, ou vazio se ausente.
  */
 @Component
+@ConditionalOnProperty(name = "financeiro.provedor.nome", havingValue = "simulado", matchIfMissing = true)
 public class ProvedorSimulado implements ProvedorPagamento {
 
   public static final String NOME = "simulado";
@@ -69,6 +71,21 @@ public class ProvedorSimulado implements ProvedorPagamento {
   public Cobrado createCardPayment(Solicitacao s) {
     String ref = "car-" + s.pagamentoId().toString().replace("-", "").substring(0, 20);
     return new Cobrado(ref, null, null, null, "https://provedor.simulado/pagar/" + ref, relogio.agoraUtc().plus(validade));
+  }
+
+  /** Cartão recorrente simulado: aceita token "tok_sim_..." e devolve um pedido pendente (confirma pelo webhook). */
+  @Override
+  public Cobrado chargeSavedCard(String tokenCartao, Solicitacao s) {
+    if (tokenCartao == null || !tokenCartao.startsWith("tok_sim_")) {
+      throw new IllegalArgumentException("Token de cartão desconhecido no provedor simulado.");
+    }
+    String ref = "rec-" + s.pagamentoId().toString().replace("-", "").substring(0, 20);
+    return new Cobrado(ref, null, null, null, null, relogio.agoraUtc().plus(validade));
+  }
+
+  @Override
+  public String linkCadastroCartao(UUID recorrenciaId, UUID empresaId) {
+    return "https://provedor.simulado/cartoes/novo?referencia=" + recorrenciaId;
   }
 
   @Override

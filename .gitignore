@@ -8,3 +8,6 @@ benchmark-resultados.json
 .idea/
 .vscode/
 *.iml
+# V2: documentos do armazenamento local e dumps do backup (dados de clientes)
+dados/
+backups/

@@ -1,8 +1,10 @@
 import { useState, type ReactNode } from 'react'
-import { Check, Copy, RotateCw, SearchX } from 'lucide-react'
+import { Check, Copy, Download, FileDown, Paperclip, RotateCw, SearchX } from 'lucide-react'
 import { Badge, Button, cx, EmptyState, Spinner } from '@/components/ui'
-import type { Carga } from '@/lib/hooks'
-import { corDoStatus, ROTULOS } from '@/lib/formato'
+import { avisar } from '@/lib/avisos'
+import { usePermissao, type Carga } from '@/lib/hooks'
+import { corDoStatus, hoje, ROTULOS } from '@/lib/formato'
+import { api, baixarArquivo, enviarArquivo, mensagemDe } from '@/plataforma/api'
 
 /** Componentes do Financeiro montados sobre os do design system (components/ui, copiado da casca). */
 
@@ -80,6 +82,81 @@ export function Copiar({ texto }: { texto: string }) {
       setTimeout(() => setOk(false), 1500)
     }}>
       {ok ? <Check aria-hidden className="size-3.5" /> : <Copy aria-hidden className="size-3.5" />} {ok ? 'Copiado' : 'Copiar'}
+    </Button>
+  )
+}
+
+/** CSV, XLSX e PDF de um relatório (§78), no cabeçalho da página, como em contas a receber. */
+export function BotoesExportar({ caminho, query, nome, formatos = ['csv', 'xlsx', 'pdf'] }: {
+  caminho: string
+  query?: Record<string, unknown>
+  nome: string
+  formatos?: string[]
+}) {
+  const { tem } = usePermissao()
+  if (!tem('financeiro.relatorio.exportar') && !caminho.startsWith('/contabilidade')) return null
+  return (
+    <>
+      {formatos.map((f) => (
+        <Button key={f} variant="secondary" size="sm" onClick={async () => {
+          try {
+            await baixarArquivo(caminho, { ...(query ?? {}), formato: f }, `${nome}-${hoje()}.${f}`)
+          } catch (e) {
+            avisar('erro', mensagemDe(e))
+          }
+        }}>
+          <FileDown aria-hidden className="size-3.5" /> {f.toUpperCase()}
+        </Button>
+      ))}
+    </>
+  )
+}
+
+/** Escolha de arquivo + envio para /documentos (§96). Devolve o id do documento criado. */
+export function EnviarDocumento({ categoria, entidade, registroId, rotulo = 'Anexar arquivo', aoEnviar }: {
+  categoria: string
+  entidade?: string
+  registroId?: string
+  rotulo?: string
+  aoEnviar: (documentoId: string) => void
+}) {
+  const [enviando, setEnviando] = useState(false)
+  return (
+    <label className={cx('inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-brand-200 bg-superficie px-3 text-xs font-semibold text-titulo hover:bg-brand-50 dark:border-borda-forte dark:hover:bg-superficie-2', enviando && 'pointer-events-none opacity-55')}>
+      <Paperclip aria-hidden className="size-3.5" /> {enviando ? 'Enviando…' : rotulo}
+      <input type="file" className="sr-only" accept=".pdf,.xml,.png,.jpg,.jpeg,.csv,.txt,.xlsx,.zip,.ofx" onChange={async (e) => {
+        const arquivo = e.target.files?.[0]
+        e.target.value = ''
+        if (!arquivo) return
+        const form = new FormData()
+        form.append('arquivo', arquivo)
+        setEnviando(true)
+        try {
+          const r = await enviarArquivo<{ id: string }>('/documentos', form, { categoria, entidade, registroId })
+          avisar('sucesso', r.message ?? 'Arquivo enviado.')
+          aoEnviar(r.data.id)
+        } catch (x) {
+          avisar('erro', mensagemDe(x))
+        } finally {
+          setEnviando(false)
+        }
+      }} />
+    </label>
+  )
+}
+
+/** Link para baixar um documento da biblioteca (resposta sem envelope, token no cabeçalho). */
+export function BaixarDocumento({ id, nome = 'documento' }: { id: string; nome?: string }) {
+  return (
+    <Button variant="ghost" size="sm" onClick={async () => {
+      try {
+        const info = await api<{ nomeArquivo: string }>(`/documentos/${id}`)
+        await baixarArquivo(`/documentos/${id}/arquivo`, {}, info.data.nomeArquivo ?? nome)
+      } catch (e) {
+        avisar('erro', mensagemDe(e))
+      }
+    }}>
+      <Download aria-hidden className="size-3.5" /> Baixar
     </Button>
   )
 }

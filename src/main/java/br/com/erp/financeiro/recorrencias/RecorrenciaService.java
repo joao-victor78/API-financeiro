@@ -13,9 +13,17 @@ import br.com.erp.financeiro.recorrencias.RecorrenciaDtos.ItemEntrada;
 import br.com.erp.financeiro.recorrencias.RecorrenciaDtos.RegraEntrada;
 import br.com.erp.financeiro.recorrencias.RecorrenciaDtos.RegraSaida;
 import br.com.erp.financeiro.tenant.TenantContexto;
+import br.com.erp.financeiro.cadastros.CadastroService;
+import br.com.erp.financeiro.cadastros.CategoriaFinanceira;
+import br.com.erp.financeiro.cobrancas.CobrancaItem;
+import br.com.erp.financeiro.cobrancas.CobrancaItemRepository;
+import br.com.erp.financeiro.eventos.PedidosPlataforma;
+import br.com.erp.financeiro.pagamentos.PagamentoService;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.Timestamp;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -35,6 +43,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class RecorrenciaService {
 
+  private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(RecorrenciaService.class);
   static final String ENTIDADE = "recorrencia";
 
   public enum Origem { JOB, MANUAL }
@@ -46,9 +55,17 @@ public class RecorrenciaService {
   private final AuditoriaService auditoria;
   private final JdbcTemplate jdbc;
   private final Relogio relogio;
+  private final ConsumoRepository consumos;
+  private final AdicionalRepository adicionais;
+  private final CobrancaItemRepository composicao;
+  private final CadastroService cadastros;
+  private final PagamentoService pagamentos;
+  private final PedidosPlataforma plataforma;
 
   public RecorrenciaService(RecorrenciaRepository regras, RecorrenciaItemRepository itens, CobrancaRepository cobrancas,
-      CobrancaService cobrancaService, AuditoriaService auditoria, JdbcTemplate jdbc, Relogio relogio) {
+      CobrancaService cobrancaService, AuditoriaService auditoria, JdbcTemplate jdbc, Relogio relogio,
+      ConsumoRepository consumos, AdicionalRepository adicionais, CobrancaItemRepository composicao,
+      CadastroService cadastros, PagamentoService pagamentos, PedidosPlataforma plataforma) {
     this.regras = regras;
     this.itens = itens;
     this.cobrancas = cobrancas;
@@ -56,6 +73,12 @@ public class RecorrenciaService {
     this.auditoria = auditoria;
     this.jdbc = jdbc;
     this.relogio = relogio;
+    this.consumos = consumos;
+    this.adicionais = adicionais;
+    this.composicao = composicao;
+    this.cadastros = cadastros;
+    this.pagamentos = pagamentos;
+    this.plataforma = plataforma;
   }
 
   @Transactional(readOnly = true)
@@ -108,11 +131,22 @@ public class RecorrenciaService {
 
     String desde = r.getProximaCompetencia();
     String anterior = Competencia.somarMeses(desde, -1);
+    // Quem não vê margem (ou o consumidor de contrato) recebe o custo nulo: mantém o custo gravado por serviço
+    List<ItemEntrada> entrada = e.itens();
+    if (!br.com.erp.financeiro.seguranca.Usuarios.tem(RecorrenciaDtos.PERMISSAO_MARGEM)) {
+      Map<UUID, BigDecimal> custos = new java.util.HashMap<>();
+      for (RecorrenciaItem i : atuais) {
+        if (i.getDeletedAt() == null && i.vigenteEm(desde) && i.getCustoUnitario() != null) custos.put(i.getServicoId(), i.getCustoUnitario());
+      }
+      entrada = entrada.stream().map(i -> i.custoUnitario() != null || !custos.containsKey(i.servicoId()) ? i
+          : new ItemEntrada(i.servicoId(), i.descricao(), i.quantidade(), i.unidade(), i.valorUnitario(), i.franquia(),
+              i.valorExcedente(), custos.get(i.servicoId()), i.fabricante())).toList();
+    }
     for (RecorrenciaItem i : atuais) {
       if (i.getVigenteDesde().compareTo(desde) >= 0) i.excluir(); // versão futura ainda não usada: substituída
       else if (i.vigenteEm(desde)) i.encerrarEm(anterior);
     }
-    List<RecorrenciaItem> novos = salvarItens(r.getId(), e.itens(), desde);
+    List<RecorrenciaItem> novos = salvarItens(r.getId(), entrada, desde);
     auditoria.registrar("EDITAR", ENTIDADE, r.getId(), antes, Map.of("regra", r.instantaneo(), "itens", e.itens()));
     return RegraSaida.de(r, novos);
   }
@@ -125,7 +159,14 @@ public class RecorrenciaService {
     return gerarCiclo(r, Competencia.de(relogio.hoje()), Origem.MANUAL);
   }
 
-  /** Gera a cobrança de uma competência. Chamado na transação de quem pede (manual ou job, por regra). */
+  /**
+   * Gera a cobrança de uma competência. Chamado na transação de quem pede (manual ou job, por regra).
+   *
+   * <p>Valor = itens fixos vigentes (RN-14) + excedente dos consumos ainda não faturados + adicionais
+   * ainda não faturados, até a competência gerada (§26: CONTRATO + SERVIÇOS + QUANTIDADE + CONSUMO +
+   * ADICIONAIS). Sem consumo nem adicional, o valor é exatamente o de antes (só os itens). A composição
+   * fica em cobranca_itens; a parte variável não entra no MRR.
+   */
   @Transactional
   public Cobranca gerarCiclo(Recorrencia r, String competencia, Origem origem) {
     Integer ja = jdbc.queryForObject(
@@ -135,14 +176,39 @@ public class RecorrenciaService {
       throw ApiException.conflito("CICLO_JA_GERADO", "A competência " + competencia + " já foi gerada para esta regra.");
     }
     List<RecorrenciaItem> vigentes = itens.daRegra(r.getId()).stream().filter(i -> i.vigenteEm(competencia)).toList();
-    BigDecimal valor = vigentes.stream().map(RecorrenciaItem::total).reduce(BigDecimal.ZERO, BigDecimal::add);
-    if (valor.signum() <= 0) {
+    BigDecimal fixo = vigentes.stream().map(RecorrenciaItem::total).reduce(BigDecimal.ZERO, BigDecimal::add);
+    if (fixo.signum() <= 0) {
       throw ApiException.regra("SEM_ITENS_VIGENTES", "A regra não tem itens com valor vigentes em " + competencia + ".");
     }
+
+    // Excedentes: consumo acima do permitido (franquia ou quantidade contratada) × preço do excedente.
+    Map<UUID, RecorrenciaItem> porServico = new java.util.LinkedHashMap<>();
+    vigentes.forEach(i -> porServico.putIfAbsent(i.getServicoId(), i));
+    List<RecorrenciaConsumo> consumosDoCiclo = new ArrayList<>();
+    List<Object[]> excedentes = new ArrayList<>(); // [item, consumo, excesso, valor]
+    BigDecimal variavel = BigDecimal.ZERO;
+    for (RecorrenciaConsumo consumo : consumos.aFaturar(r.getId(), competencia)) {
+      RecorrenciaItem item = porServico.get(consumo.getServicoId());
+      if (item == null) continue; // serviço fora da regra vigente: fica pendente para revisão
+      consumosDoCiclo.add(consumo);
+      BigDecimal excesso = consumo.getQuantidade().subtract(item.permitido());
+      if (excesso.signum() <= 0) continue;
+      BigDecimal valorExcesso = excesso.multiply(item.precoExcedente()).setScale(2, RoundingMode.HALF_EVEN);
+      if (valorExcesso.signum() <= 0) continue;
+      excedentes.add(new Object[] {item, consumo, excesso, valorExcesso});
+      variavel = variavel.add(valorExcesso);
+    }
+    List<RecorrenciaAdicional> adicionaisDoCiclo = adicionais.aFaturar(r.getId(), competencia);
+    for (RecorrenciaAdicional a : adicionaisDoCiclo) variavel = variavel.add(a.getValor());
+    BigDecimal valor = fixo.add(variavel);
+
     String descricao = (r.getDescricao() != null ? r.getDescricao() : "Mensalidade")
         + " — " + Competencia.mes(competencia).getMonthValue() + "/" + Competencia.mes(competencia).getYear();
     Cobranca c = Cobranca.nova(r.getEmpresaId(), r.getContratoId(), r.getId(), competencia, descricao,
         r.vencimentoDe(competencia), valor, null, null, null, r.getFormaPagamento());
+    c.definirValorVariavel(variavel);
+    c.classificar(r.getCategoriaId(), r.getCentroCustoId());
+    c.atribuirComercial(r.getVendedorId(), r.getSdrId(), r.getParceiroId());
     if (c.getDataVencimento().isBefore(relogio.hoje())) c.marcarAtrasada();
     cobrancaService.registrarNova(c);
     cobrancas.flush(); // a geração referencia a cobrança por FK
@@ -152,11 +218,63 @@ public class RecorrenciaService {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         UUID.randomUUID(), TenantContexto.exigir(), r.getId(), competencia, c.getId(), origem.name(),
         Timestamp.from(relogio.agora()), Timestamp.from(relogio.agora()));
+
+    // Composição (§26) e vínculo dos consumos e adicionais faturados.
+    for (RecorrenciaItem i : vigentes) {
+      composicao.save(new CobrancaItem(c.getId(), CobrancaItem.Tipo.FIXO, i.getServicoId(), i.getFabricante(), i.getDescricao(),
+          i.getQuantidade(), i.getUnidade(), i.getValorUnitario(), i.total(), i.custoTotal()));
+    }
+    for (Object[] e : excedentes) {
+      RecorrenciaItem i = (RecorrenciaItem) e[0];
+      RecorrenciaConsumo consumo = (RecorrenciaConsumo) e[1];
+      BigDecimal excesso = (BigDecimal) e[2];
+      BigDecimal custo = i.getCustoUnitario() == null ? null : excesso.multiply(i.getCustoUnitario()).setScale(2, RoundingMode.HALF_EVEN);
+      composicao.save(new CobrancaItem(c.getId(), CobrancaItem.Tipo.EXCEDENTE, i.getServicoId(), i.getFabricante(),
+          "Excedente " + i.getDescricao() + " (" + Competencia.mes(consumo.getCompetencia()).getMonthValue() + "/"
+              + Competencia.mes(consumo.getCompetencia()).getYear() + "): " + excesso.stripTrailingZeros().toPlainString()
+              + " " + i.getUnidade() + " acima de " + i.permitido().stripTrailingZeros().toPlainString(),
+          excesso, i.getUnidade(), i.precoExcedente(), (BigDecimal) e[3], custo));
+    }
+    for (RecorrenciaAdicional a : adicionaisDoCiclo) {
+      composicao.save(new CobrancaItem(c.getId(), CobrancaItem.Tipo.ADICIONAL, null, null, a.getDescricao(), BigDecimal.ONE,
+          "UN", a.getValor(), a.getValor(), null));
+      a.faturar(c.getId());
+    }
+    consumosDoCiclo.forEach(x -> x.faturar(c.getId()));
+
     Map<String, Object> antes = r.instantaneo();
     r.avancarDepoisDe(competencia);
-    auditoria.registrar("GERAR_CICLO", ENTIDADE, r.getId(), antes,
-        Map.of("competencia", competencia, "cobrancaId", c.getId(), "valor", valor, "origem", origem));
+    Map<String, Object> resumo = new java.util.LinkedHashMap<>();
+    resumo.put("competencia", competencia);
+    resumo.put("cobrancaId", c.getId());
+    resumo.put("valor", valor);
+    resumo.put("origem", origem);
+    if (variavel.signum() > 0) {
+      resumo.put("valorFixo", fixo);
+      resumo.put("valorVariavel", variavel);
+    }
+    auditoria.registrar("GERAR_CICLO", ENTIDADE, r.getId(), antes, resumo);
+    cobrarCartaoSeAutomatico(r, c);
     return c;
+  }
+
+  /** Cartão recorrente (§27): pedido ao provedor e cobrança AGENDADO até o webhook confirmar. */
+  private void cobrarCartaoSeAutomatico(Recorrencia r, Cobranca c) {
+    if (!r.isCobrancaAutomatica() || r.getCartaoTokenRef() == null || c.getStatus() == br.com.erp.financeiro.cobrancas.StatusCobranca.ATRASADO) {
+      return;
+    }
+    try {
+      pagamentos.cobrarCartaoSalvo(c, r.getCartaoTokenRef());
+      Map<String, Object> antes = c.instantaneo();
+      c.agendar(c.getDataVencimento());
+      auditoria.registrar("AGENDAR", CobrancaService.ENTIDADE, c.getId(), antes, c.instantaneo());
+    } catch (RuntimeException e) {
+      log.warn("Cartão recorrente da regra {} não cobrado: {}", r.getId(), e.getMessage());
+      plataforma.timeline(c.getEmpresaId(), "financeiro.cartao.falhou",
+          "Não foi possível cobrar o cartão final " + (r.getCartaoFinal() == null ? "?" : r.getCartaoFinal())
+              + " na cobrança " + c.getId().toString().substring(0, 8) + "; a cobrança segue para pagamento manual.",
+          "/modulos/financeiro/cobrancas/" + c.getId());
+    }
   }
 
   /** Usado pelo job: regras ativas com competência a gerar até o mês atual. */
@@ -212,16 +330,21 @@ public class RecorrenciaService {
     }).orElse(false);
   }
 
-  private static void configurar(Recorrencia r, RegraEntrada e) {
+  private void configurar(Recorrencia r, RegraEntrada e) {
     r.configurar(e.clienteId(), e.contratoId(), e.descricao(),
         e.periodicidade() != null ? e.periodicidade() : Periodicidade.MENSAL,
         e.diaGeracao() != null ? e.diaGeracao() : 5,
         e.diasParaVencimento() != null ? e.diasParaVencimento() : 10,
         e.formaPagamento());
+    cadastros.categoriaParaUso(e.categoriaId(), CategoriaFinanceira.Tipo.RECEITA, "categoriaId");
+    cadastros.centroParaUso(e.centroCustoId(), "centroCustoId");
+    r.configurarComplementos(e.vendedorId(), e.sdrId(), e.parceiroId(), e.categoriaId(), e.centroCustoId(),
+        e.indiceReajuste(), e.mesReajuste());
   }
 
-  private List<RecorrenciaItem> salvarItens(UUID regra, List<ItemEntrada> entrada, String desde) {
+  List<RecorrenciaItem> salvarItens(UUID regra, List<ItemEntrada> entrada, String desde) {
     return itens.saveAll(entrada.stream().map(i -> new RecorrenciaItem(regra, i.servicoId(), i.descricao().trim(),
-        i.quantidade(), i.unidade().trim(), i.valorUnitario(), i.franquia(), desde)).toList());
+        i.quantidade(), i.unidade().trim(), i.valorUnitario(), i.franquia(), desde, i.valorExcedente(), i.custoUnitario(),
+        i.fabricante())).toList());
   }
 }

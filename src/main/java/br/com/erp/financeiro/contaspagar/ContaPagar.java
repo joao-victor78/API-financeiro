@@ -60,7 +60,62 @@ public class ContaPagar extends EntidadeBase {
   @Column(name = "valor_pago")
   private BigDecimal valorPago;
 
+  // ------------------------------------------------------------------ V2 (opcionais)
+
+  @Column(name = "categoria_id")
+  private UUID categoriaId;
+
+  @Column(name = "centro_custo_id")
+  private UUID centroCustoId;
+
+  /** Conta bancária de onde o pagamento saiu (fluxo de caixa e conciliação, §32). */
+  @Column(name = "conta_bancaria_id")
+  private UUID contaBancariaId;
+
+  /** Arquivo do documento (NF, boleto) na biblioteca de documentos (§25 "documento", §96). */
+  @Column(name = "documento_id")
+  private UUID documentoId;
+
   protected ContaPagar() {}
+
+  /** Liga a conta aos cadastros; o texto livre recebe o nome do cadastro quando vier vazio. */
+  public void classificar(UUID categoriaId, String nomeCategoria, UUID centroCustoId, String rotuloCentro, UUID contaBancariaId,
+      UUID documentoId) {
+    this.categoriaId = categoriaId;
+    this.centroCustoId = centroCustoId;
+    this.contaBancariaId = contaBancariaId;
+    this.documentoId = documentoId;
+    if (nomeCategoria != null && (categoria == null || categoria.isBlank())) categoria = limitar(nomeCategoria, 60);
+    if (rotuloCentro != null && (centroCusto == null || centroCusto.isBlank())) centroCusto = limitar(rotuloCentro, 60);
+  }
+
+  public void anexarDocumento(UUID documentoId) {
+    this.documentoId = documentoId;
+  }
+
+  public void definirContaBancaria(UUID contaBancariaId) {
+    if (contaBancariaId != null) this.contaBancariaId = contaBancariaId;
+  }
+
+  private static String limitar(String s, int max) {
+    return s.length() <= max ? s : s.substring(0, max);
+  }
+
+  public UUID getCategoriaId() {
+    return categoriaId;
+  }
+
+  public UUID getCentroCustoId() {
+    return centroCustoId;
+  }
+
+  public UUID getContaBancariaId() {
+    return contaBancariaId;
+  }
+
+  public UUID getDocumentoId() {
+    return documentoId;
+  }
 
   public ContaPagar(String fornecedorNome, String fornecedorDocumento, String categoria, String centroCusto,
       String competencia, LocalDate vencimento, BigDecimal valor, String documento, String observacoes) {
@@ -106,6 +161,10 @@ public class ContaPagar extends EntidadeBase {
     m.put("aprovadoEm", aprovadoEm);
     m.put("dataPagamento", dataPagamento);
     m.put("valorPago", valorPago);
+    if (categoriaId != null) m.put("categoriaId", categoriaId);
+    if (centroCustoId != null) m.put("centroCustoId", centroCustoId);
+    if (contaBancariaId != null) m.put("contaBancariaId", contaBancariaId);
+    if (documentoId != null) m.put("documentoId", documentoId);
     return m;
   }
 

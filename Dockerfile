@@ -12,4 +12,6 @@ WORKDIR /app
 COPY --from=build /src/target/financeiro.jar app.jar
 USER app
 EXPOSE 8085
+# Actuator (health/Prometheus) numa porta separada, só para a rede interna (§98)
+EXPOSE 9085
 ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "/app/app.jar"]

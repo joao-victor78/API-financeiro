@@ -7,6 +7,8 @@ import br.com.erp.financeiro.cobrancas.CobrancaRepository;
 import br.com.erp.financeiro.comum.Dinheiro;
 import br.com.erp.financeiro.contaspagar.ContaPagar;
 import br.com.erp.financeiro.contaspagar.ContaPagarRepository;
+import br.com.erp.financeiro.fiscal.NotaFiscal;
+import br.com.erp.financeiro.fiscal.NotaFiscalRepository;
 import br.com.erp.financeiro.seguranca.Usuarios;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.time.format.DateTimeFormatter;
@@ -34,10 +36,12 @@ public class BuscaController {
 
   private final CobrancaRepository cobrancas;
   private final ContaPagarRepository contas;
+  private final NotaFiscalRepository notas;
 
-  public BuscaController(CobrancaRepository cobrancas, ContaPagarRepository contas) {
+  public BuscaController(CobrancaRepository cobrancas, ContaPagarRepository contas, NotaFiscalRepository notas) {
     this.cobrancas = cobrancas;
     this.contas = contas;
+    this.notas = notas;
   }
 
   public record ResultadoBusca(UUID id, String titulo, String subtitulo, String rota) {}
@@ -65,6 +69,15 @@ public class BuscaController {
             "Conta a pagar — " + c.getFornecedorNome() + (c.getDocumento() != null ? " (" + c.getDocumento() + ")" : ""),
             "Vence em " + c.getDataVencimento().format(DATA) + " · " + Dinheiro.brl(c.getValor()) + " · " + c.getStatus(),
             "/contas-pagar/" + c.getId()));
+      }
+    }
+    if (Usuarios.tem("financeiro.notafiscal.ver") && resultado.size() < MAXIMO) {
+      for (NotaFiscal n : notas.buscar(like, PageRequest.of(0, MAXIMO - resultado.size()))) {
+        resultado.add(new ResultadoBusca(n.getId(),
+            "Nota fiscal " + n.getModelo() + " nº " + n.getNumero() + (n.getParticipanteNome() != null ? " — " + n.getParticipanteNome() : ""),
+            (n.getTipo() == NotaFiscal.Tipo.EMITIDA ? "Emitida" : "Recebida") + " em " + n.getDataEmissao().format(DATA) + " · "
+                + Dinheiro.brl(n.getValor()) + " · " + n.getStatus(),
+            "/notas-fiscais/" + n.getId()));
       }
     }
     return Resposta.ok(resultado.size() > MAXIMO ? resultado.subList(0, MAXIMO) : resultado);

@@ -81,6 +81,19 @@ public abstract class TesteBase {
     r.add("financeiro.jwt.chave-publica-arquivo", () -> "");
     r.add("logging.structured.format.console", () -> "");
     r.add("ENV_FILE", () -> "nao-existe.env");
+    // V2: documentos num diretório temporário; webhooks de saída para um servidor local do teste
+    r.add("financeiro.armazenamento.diretorio", () -> System.getProperty("java.io.tmpdir") + "/financeiro-testes-documentos");
+    r.add("financeiro.webhooks-saida.permitir-http", () -> "true");
+    r.add("financeiro.webhooks-saida.permitir-rede-interna", () -> "true");
+  }
+
+  /** Token com todas as permissões do perfil ADMINISTRADOR, incluindo as da V2. */
+  protected RequestPostProcessor tudo() {
+    return usuario(tenant, br.com.erp.financeiro.ferramentas.EmitirToken.PERFIS.get("ADMINISTRADOR").toArray(String[]::new));
+  }
+
+  protected RequestPostProcessor tudoComId(UUID sub) {
+    return usuarioComId(tenant, sub, br.com.erp.financeiro.ferramentas.EmitirToken.PERFIS.get("ADMINISTRADOR").toArray(String[]::new));
   }
 
   @MockitoBean

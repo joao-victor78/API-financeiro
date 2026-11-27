@@ -31,14 +31,16 @@ public class Outbox {
   private final Relogio relogio;
   private final PublicadorOutbox publicador;
   private final String modulo;
+  private final br.com.erp.financeiro.webhooks.saida.FilaWebhooks webhooks;
 
   public Outbox(JdbcTemplate jdbc, ObjectMapper mapper, Relogio relogio, PublicadorOutbox publicador,
-      @Value("${financeiro.modulo:financeiro}") String modulo) {
+      @Value("${financeiro.modulo:financeiro}") String modulo, br.com.erp.financeiro.webhooks.saida.FilaWebhooks webhooks) {
     this.jdbc = jdbc;
     this.mapper = mapper;
     this.relogio = relogio;
     this.publicador = publicador;
     this.modulo = modulo;
+    this.webhooks = webhooks;
   }
 
   /** Grava o evento (ou pedido à plataforma) para publicar depois do commit da transação atual. */
@@ -58,6 +60,7 @@ public class Outbox {
         INSERT INTO financeiro.eventos_outbox (id, tenant_id, routing_key, payload, status, tentativas, criado_em, proxima_tentativa)
         VALUES (?, ?, ?, CAST(? AS jsonb), 'PENDENTE', 0, ?, ?)""",
         evento.id(), tenant, tipo, payload, agora, agora);
+    webhooks.enfileirar(tenant, evento.id(), tipo, payload, relogio.agora()); // §91: webhooks de saída do tenant
     TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
       @Override
       public void afterCommit() {

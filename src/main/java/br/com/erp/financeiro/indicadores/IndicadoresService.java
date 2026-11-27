@@ -42,14 +42,19 @@ public class IndicadoresService {
   private final PagamentoRepository pagamentos;
   private final ContaPagarRepository contasPagar;
   private final Relogio relogio;
+  private final org.springframework.jdbc.core.JdbcTemplate jdbc;
+  private final br.com.erp.financeiro.gerencial.FluxoCaixaService fluxo;
 
   public IndicadoresService(CobrancaRepository cobrancas, RecorrenciaRepository regras, PagamentoRepository pagamentos,
-      ContaPagarRepository contasPagar, Relogio relogio) {
+      ContaPagarRepository contasPagar, Relogio relogio, org.springframework.jdbc.core.JdbcTemplate jdbc,
+      br.com.erp.financeiro.gerencial.FluxoCaixaService fluxo) {
     this.cobrancas = cobrancas;
     this.regras = regras;
     this.pagamentos = pagamentos;
     this.contasPagar = contasPagar;
     this.relogio = relogio;
+    this.jdbc = jdbc;
+    this.fluxo = fluxo;
   }
 
   /** contratos/financeiro.yaml MrrResponse, com ARR e churn (RN-47, RN-48) acrescentados. Taxas em pontos (12.5 = 12,5%). */
@@ -116,7 +121,9 @@ public class IndicadoresService {
       int meses = r.getPeriodicidade().meses();
       if (m.isBefore(inicio) || !m.isBefore(inicio.plusMonths(meses))) continue;
       if (r.getVigenciaFim() != null && !YearMonth.from(r.getVigenciaFim()).isAfter(m)) continue;
-      BigDecimal mensal = c.getValor().subtract(c.getDesconto()).divide(BigDecimal.valueOf(meses), 6, RoundingMode.HALF_EVEN);
+      // V2: excedente de consumo e adicionais (valor_variavel) são receita não recorrente: fora do MRR (§75).
+      BigDecimal mensal = c.getValor().subtract(c.getDesconto()).subtract(c.getValorVariavel())
+          .divide(BigDecimal.valueOf(meses), 6, RoundingMode.HALF_EVEN);
       mapa.merge(c.getEmpresaId(), mensal, BigDecimal::add);
     }
     return mapa;
@@ -137,10 +144,18 @@ public class IndicadoresService {
         : parte.multiply(BigDecimal.valueOf(100)).divide(todo, 2, RoundingMode.HALF_EVEN);
   }
 
-  /** contratos/financeiro.yaml DashboardFinanceiro (RN-46), com contagens e MRR do mês. */
+  /**
+   * contratos/financeiro.yaml DashboardFinanceiro (RN-46), com contagens e MRR do mês. Os campos depois de
+   * arr são da V2 (§74 e §111): receita, despesas, margem, fluxo dos próximos 30 dias, saldo bancário,
+   * conciliações e comissões. custoServicosMes e margemBrutaMes só vêm para quem tem financeiro.margem.ver.
+   */
   public record Dashboard(BigDecimal aReceberHoje, BigDecimal atrasados, BigDecimal pagamentosRecebidosMes,
       BigDecimal contasAPagarMes, BigDecimal inadimplenciaTotal, int cobrancasEmAberto, int cobrancasAtrasadas,
-      BigDecimal mrrAtual, BigDecimal arr) {}
+      BigDecimal mrrAtual, BigDecimal arr,
+      BigDecimal receitaMes, BigDecimal despesasMes, BigDecimal resultadoMes, BigDecimal margemMes, BigDecimal pagoMes,
+      BigDecimal entradasPrevistas30d, BigDecimal saidasPrevistas30d, BigDecimal saldoProjetado30d, BigDecimal saldoBancario,
+      long conciliacoesPendentes, BigDecimal comissoesAPagar, long reajustesDoMes, BigDecimal custoServicosMes,
+      BigDecimal margemBrutaMes) {}
 
   @Transactional(readOnly = true)
   public Dashboard dashboard() {
@@ -160,8 +175,69 @@ public class IndicadoresService {
     OffsetDateTime de = mes.atDay(1).atStartOfDay(Relogio.BRASILIA).toOffsetDateTime();
     OffsetDateTime ate = mes.plusMonths(1).atDay(1).atStartOfDay(Relogio.BRASILIA).toOffsetDateTime();
     Mrr mrr = mrr(mes);
+
+    // V2 (§74, §111)
+    UUID tenant = br.com.erp.financeiro.tenant.TenantContexto.exigir();
+    String comp = mes.toString();
+    java.sql.Date hojeSql = java.sql.Date.valueOf(hoje);
+    java.sql.Date em30 = java.sql.Date.valueOf(hoje.plusDays(30));
+    BigDecimal receita = soma("""
+        SELECT coalesce(sum(valor - desconto + juros + multa), 0) FROM financeiro.cobrancas
+         WHERE tenant_id = ? AND deleted_at IS NULL AND status <> 'ESTORNADO' AND competencia = ?""", tenant, comp);
+    BigDecimal despesas = soma("""
+        SELECT coalesce(sum(valor), 0) FROM financeiro.contas_pagar
+         WHERE tenant_id = ? AND deleted_at IS NULL AND status <> 'CANCELADA' AND competencia = ?""", tenant, comp);
+    BigDecimal pago = soma("""
+        SELECT coalesce(sum(valor_pago), 0) FROM financeiro.contas_pagar
+         WHERE tenant_id = ? AND deleted_at IS NULL AND status = 'PAGA' AND data_pagamento BETWEEN ? AND ?""",
+        tenant, java.sql.Date.valueOf(mes.atDay(1)), java.sql.Date.valueOf(mes.atEndOfMonth()));
+    BigDecimal entradas30 = soma("""
+        SELECT coalesce(sum(valor - desconto + juros + multa - valor_pago), 0) FROM financeiro.cobrancas
+         WHERE tenant_id = ? AND deleted_at IS NULL AND status IN ('ABERTO','AGENDADO','ATRASADO','PARCIAL')
+           AND coalesce(CASE WHEN status = 'AGENDADO' THEN agendada_para END, data_vencimento) BETWEEN ? AND ?""", tenant, hojeSql, em30);
+    BigDecimal saidas30 = soma("""
+        SELECT coalesce(sum(valor), 0) FROM financeiro.contas_pagar
+         WHERE tenant_id = ? AND deleted_at IS NULL AND status IN ('PENDENTE','APROVADA') AND data_vencimento BETWEEN ? AND ?""",
+        tenant, hojeSql, em30);
+    BigDecimal saldoBancario = null;
+    Long contasAtivas = jdbc.queryForObject("SELECT count(*) FROM financeiro.contas_bancarias WHERE tenant_id = ? AND deleted_at IS NULL AND ativa",
+        Long.class, tenant);
+    if (contasAtivas != null && contasAtivas > 0) {
+      var f = fluxo.calcular(hoje, hoje, br.com.erp.financeiro.gerencial.FluxoCaixaService.Agrupamento.DIA, null);
+      saldoBancario = f.saldoInicial().add(f.totalEntradasRealizadas()).subtract(f.totalSaidasRealizadas());
+    }
+    Long pendentes = jdbc.queryForObject("""
+        SELECT count(*) FROM financeiro.transacoes_bancarias WHERE tenant_id = ? AND deleted_at IS NULL AND status = 'PENDENTE'""",
+        Long.class, tenant);
+    BigDecimal comissoes = soma("""
+        SELECT coalesce(sum(valor), 0) FROM financeiro.comissoes WHERE tenant_id = ? AND deleted_at IS NULL AND status = 'A_PAGAR'""", tenant);
+    Long reajustes = jdbc.queryForObject("""
+        SELECT count(*) FROM financeiro.recorrencias WHERE tenant_id = ? AND deleted_at IS NULL AND ativa AND mes_reajuste = ?""",
+        Long.class, tenant, hoje.getMonthValue());
+    BigDecimal custo = null;
+    BigDecimal margemBruta = null;
+    if (br.com.erp.financeiro.seguranca.Usuarios.tem("financeiro.margem.ver")) {
+      custo = soma("""
+          SELECT coalesce(sum(i.custo_total), 0) FROM financeiro.cobranca_itens i JOIN financeiro.cobrancas c ON c.id = i.cobranca_id
+           WHERE c.tenant_id = ? AND c.deleted_at IS NULL AND c.status <> 'ESTORNADO' AND c.competencia = ?""", tenant, comp);
+      BigDecimal recorrente = soma("""
+          SELECT coalesce(sum(valor - desconto), 0) FROM financeiro.cobrancas
+           WHERE tenant_id = ? AND deleted_at IS NULL AND status <> 'ESTORNADO' AND competencia = ? AND recorrencia_id IS NOT NULL""",
+          tenant, comp);
+      margemBruta = recorrente.signum() == 0 ? null : taxa(recorrente.subtract(custo), recorrente);
+    }
+    BigDecimal resultado = receita.subtract(despesas);
     return new Dashboard(dinheiro(aReceberHoje), dinheiro(atrasados), dinheiro(pagamentos.totalConfirmado(de, ate)),
         dinheiro(contasPagar.totalAPagar(mes.atDay(1), mes.atEndOfMonth())), dinheiro(inadimplencia),
-        abertas.size(), qtdAtrasadas, mrr.mrrTotal(), mrr.arr());
+        abertas.size(), qtdAtrasadas, mrr.mrrTotal(), mrr.arr(),
+        dinheiro(receita), dinheiro(despesas), dinheiro(resultado), receita.signum() == 0 ? null : taxa(resultado, receita),
+        dinheiro(pago), dinheiro(entradas30), dinheiro(saidas30), dinheiro(entradas30.subtract(saidas30)),
+        saldoBancario == null ? null : dinheiro(saldoBancario), pendentes == null ? 0 : pendentes, dinheiro(comissoes),
+        reajustes == null ? 0 : reajustes, custo == null ? null : dinheiro(custo), margemBruta);
+  }
+
+  private BigDecimal soma(String sql, Object... args) {
+    BigDecimal v = jdbc.queryForObject(sql, BigDecimal.class, args);
+    return v == null ? BigDecimal.ZERO : v;
   }
 }
