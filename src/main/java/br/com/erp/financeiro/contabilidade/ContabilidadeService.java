@@ -15,7 +15,6 @@ import br.com.erp.financeiro.eventos.TiposDeEvento;
 import br.com.erp.financeiro.relatorios.Planilhas;
 import br.com.erp.financeiro.seguranca.Usuarios;
 import br.com.erp.financeiro.tenant.TenantContexto;
-import java.math.BigDecimal;
 import java.sql.Date;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
