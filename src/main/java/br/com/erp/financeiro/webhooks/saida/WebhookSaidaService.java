@@ -63,6 +63,7 @@ public class WebhookSaidaService {
   public record Entrega(UUID id, UUID assinaturaId, UUID eventoId, String tipo, String status, int tentativas, Integer ultimoStatusHttp,
       String ultimoErro, OffsetDateTime proximaTentativa, OffsetDateTime entregueEm, OffsetDateTime criadoEm) {}
 
+  @io.swagger.v3.oas.annotations.media.Schema(name = "EventoAssinavel")
   public record Evento(String tipo, String apelido) {}
 
   public List<Evento> eventosDisponiveis() {

@@ -85,6 +85,8 @@ public class ComissaoService {
     this.relogio = relogio;
   }
 
+  // Nome próprio no OpenAPI: sem ele o springdoc confunde com RecorrenciaDtos.RegraEntrada
+  @io.swagger.v3.oas.annotations.media.Schema(name = "RegraComissaoEntrada")
   public record RegraEntrada(
       @NotBlank(message = "obrigatório") @Size(max = 120, message = "até 120 caracteres") String nome,
       @NotNull(message = "obrigatório") RegraComissao.Beneficiario beneficiarioTipo,
@@ -100,6 +102,7 @@ public class ComissaoService {
       LocalDate vigenciaInicio,
       LocalDate vigenciaFim) {}
 
+  @io.swagger.v3.oas.annotations.media.Schema(name = "RegraComissao")
   public record RegraSaida(UUID id, String nome, RegraComissao.Beneficiario beneficiarioTipo, UUID beneficiarioId, UUID servicoId,
       String fabricante, RegraComissao.Base base, BigDecimal valor, Integer mesesRecorrencia, int prioridade, boolean ativa,
       LocalDate vigenciaInicio, LocalDate vigenciaFim) {

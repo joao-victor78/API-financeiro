@@ -10,6 +10,9 @@ FROM eclipse-temurin:21-jre-alpine
 RUN addgroup -S app && adduser -S app -G app
 WORKDIR /app
 COPY --from=build /src/target/financeiro.jar app.jar
+# Documentos com ARMAZENAMENTO_TIPO=local (§95): pasta do usuário app; monte um volume em /app/dados
+RUN mkdir -p /app/dados/documentos && chown -R app:app /app/dados
+VOLUME /app/dados
 USER app
 EXPOSE 8085
 # Actuator (health/Prometheus) numa porta separada, só para a rede interna (§98)

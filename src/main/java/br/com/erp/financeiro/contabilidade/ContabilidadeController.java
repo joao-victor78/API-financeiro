@@ -61,6 +61,8 @@ public class ContabilidadeController {
     this.jdbc = jdbc;
   }
 
+  // Nomes próprios no OpenAPI (sem eles o springdoc confunde com os de RecorrenciaDtos)
+  @io.swagger.v3.oas.annotations.media.Schema(name = "ItemFechamentoEntrada")
   public record ItemEntrada(@NotNull(message = "obrigatório") Boolean concluido, String observacao) {}
 
   public record StatusEntrada(@NotNull(message = "obrigatório") FechamentoContabil.Status status, String pendencias) {}

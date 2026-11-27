@@ -84,6 +84,7 @@ public class ContabilidadeService {
     this.relogio = relogio;
   }
 
+  @io.swagger.v3.oas.annotations.media.Schema(name = "ItemFechamento")
   public record ItemSaida(Item item, int ordem, boolean concluido, UUID concluidoPor, OffsetDateTime concluidoEm, String observacao,
       String verificacao) {}
 
